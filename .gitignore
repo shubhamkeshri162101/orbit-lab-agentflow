@@ -12,5 +12,8 @@ ui/tsconfig.tsbuildinfo
 # Local runtime data (TinyDB) — seeded fresh on first run
 data/db.json
 
+# Secrets — see .env.example for the expected variable names
+.env
+
 # Editor / OS
 .DS_Store

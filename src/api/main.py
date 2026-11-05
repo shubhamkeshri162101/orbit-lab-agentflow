@@ -3,8 +3,14 @@ from __future__ import annotations
 import os
 from datetime import datetime, timezone
 
+from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+
+# Loads a local .env file (ANTHROPIC_API_KEY=..., etc.) into the process
+# environment if one exists — never committed, see .env.example. Real shell
+# `export`s still take priority since load_dotenv() doesn't override by default.
+load_dotenv()
 
 from src.agents.model_client import DEFAULT_MODEL_CATALOG, PROVIDER_ENV_VARS, get_model_client
 from src.agents.run_agent import MissingRequiredStateError, run_agent
@@ -499,6 +505,8 @@ def run_single_agent(agent_id: str, request: RunRequest) -> dict:
     try:
         result = run_agent(agent, request.input, get_model_client(catalog_for({agent["model"]})))
     except MissingRequiredStateError as e:
+        raise HTTPException(400, str(e)) from e
+    except RuntimeError as e:
         raise HTTPException(400, str(e)) from e
 
     record_execution(
