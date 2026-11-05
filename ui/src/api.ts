@@ -1,6 +1,8 @@
 import { getCurrentUser } from "./currentUser";
 
-const BASE_URL = "http://localhost:8008";
+// Override via a .env file (VITE_API_BASE_URL=https://...) for anything
+// other than the local dev backend.
+const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8008";
 
 export type Visibility = "personal" | "public";
 
@@ -75,6 +77,7 @@ export type WorkflowExecution = {
   input: Record<string, string>;
   result: RunResult;
   executed_at: string;
+  workflow_version?: string;
 };
 
 export type AgentRunResult = {

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
 
 from fastapi import Depends, FastAPI, Header, HTTPException
@@ -24,23 +25,33 @@ from src.storage.repository import Repository
 from src.tools.run_tool import run_tool
 
 app = FastAPI(title="orbit-lab-agentflow")
+
+# Dev defaults cover the Vite dev server; override with a comma-separated
+# list (e.g. CORS_ORIGINS=https://my-app.example.com) for any other deployment.
+_default_origins = "http://localhost:5173,http://127.0.0.1:5173"
+_cors_origins = [o.strip() for o in os.environ.get("CORS_ORIGINS", _default_origins).split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-agents_repo = Repository("data/db.json", "agents")
-agent_versions_repo = Repository("data/db.json", "agent_versions")
-agent_executions_repo = Repository("data/db.json", "agent_executions")
-workflows_repo = Repository("data/db.json", "workflows")
-workflow_versions_repo = Repository("data/db.json", "workflow_versions")
-workflow_executions_repo = Repository("data/db.json", "workflow_executions")
-models_repo = Repository("data/db.json", "models")
-tools_repo = Repository("data/db.json", "tools")
-tool_executions_repo = Repository("data/db.json", "tool_executions")
-mcp_servers_repo = Repository("data/db.json", "mcp_servers")
+# Overridable so tests (and any future deployment) don't have to share the
+# developer's local data/db.json.
+DB_PATH = os.environ.get("DB_PATH", "data/db.json")
+
+agents_repo = Repository(DB_PATH, "agents")
+agent_versions_repo = Repository(DB_PATH, "agent_versions")
+agent_executions_repo = Repository(DB_PATH, "agent_executions")
+workflows_repo = Repository(DB_PATH, "workflows")
+workflow_versions_repo = Repository(DB_PATH, "workflow_versions")
+workflow_executions_repo = Repository(DB_PATH, "workflow_executions")
+models_repo = Repository(DB_PATH, "models")
+tools_repo = Repository(DB_PATH, "tools")
+tool_executions_repo = Repository(DB_PATH, "tool_executions")
+mcp_servers_repo = Repository(DB_PATH, "mcp_servers")
 
 
 def resolve_step(step: dict) -> dict:
@@ -60,6 +71,20 @@ def current_user(x_user: str = Header(default="anonymous")) -> str:
 
 def visible_to(records: list[dict], user: str) -> list[dict]:
     return [r for r in records if r.get("visibility", "public") == "public" or r.get("owner") == user]
+
+
+def name_conflict(repo: Repository, name: str, exclude_id: str | None = None) -> bool:
+    """True if another record in this table already has this name."""
+    return any(r["name"] == name and r["id"] != exclude_id for r in repo.list())
+
+
+def unique_clone_name(repo: Repository, base_name: str) -> str:
+    name = f"{base_name} (clone)"
+    suffix = 2
+    while name_conflict(repo, name):
+        name = f"{base_name} (clone {suffix})"
+        suffix += 1
+    return name
 
 
 if not models_repo.list():
@@ -183,6 +208,8 @@ def validate_tool(tool: ToolCreate) -> None:
 @app.post("/tools")
 def create_tool(tool: ToolCreate, user: str = Depends(current_user)) -> dict:
     validate_tool(tool)
+    if name_conflict(tools_repo, tool.name):
+        raise HTTPException(409, f"tool '{tool.name}' already exists")
     data = tool.model_dump()
     data["owner"] = user
     return tools_repo.put(data)
@@ -207,6 +234,8 @@ def update_tool(tool_id: str, tool: ToolCreate) -> dict:
     if existing is None:
         raise HTTPException(404, "tool not found")
     validate_tool(tool)
+    if name_conflict(tools_repo, tool.name, exclude_id=tool_id):
+        raise HTTPException(409, f"tool '{tool.name}' already exists")
     updated = tool.model_dump()
     updated["id"] = tool_id
     updated["owner"] = existing.get("owner", "anonymous")
@@ -341,6 +370,8 @@ def import_mcp_tool(server_id: str, tool: McpToolImport, user: str = Depends(cur
 def create_agent(agent: AgentCreate, user: str = Depends(current_user)) -> dict:
     if agent.model not in allowed_model_names():
         raise HTTPException(400, f"model must be one of {allowed_model_names()}")
+    if name_conflict(agents_repo, agent.name):
+        raise HTTPException(409, f"agent '{agent.name}' already exists")
     data = agent.model_dump()
     data["version"] = DEFAULT_VERSION
     data["owner"] = user
@@ -367,6 +398,8 @@ def update_agent(agent_id: str, agent: AgentCreate) -> dict:
         raise HTTPException(404, "agent not found")
     if agent.model not in allowed_model_names():
         raise HTTPException(400, f"model must be one of {allowed_model_names()}")
+    if name_conflict(agents_repo, agent.name, exclude_id=agent_id):
+        raise HTTPException(409, f"agent '{agent.name}' already exists")
 
     snapshot_version(agent_versions_repo, "agent_id", existing)
     updated = agent.model_dump()
@@ -384,6 +417,8 @@ def overwrite_agent(agent_id: str, agent: AgentCreate) -> dict:
         raise HTTPException(404, "agent not found")
     if agent.model not in allowed_model_names():
         raise HTTPException(400, f"model must be one of {allowed_model_names()}")
+    if name_conflict(agents_repo, agent.name, exclude_id=agent_id):
+        raise HTTPException(409, f"agent '{agent.name}' already exists")
 
     updated = agent.model_dump()
     updated["id"] = agent_id
@@ -407,7 +442,7 @@ def clone_agent(agent_id: str, user: str = Depends(current_user)) -> dict:
         raise HTTPException(404, "agent not found")
 
     clone = {k: v for k, v in source.items() if k != "id"}
-    clone["name"] = f"{source['name']} (clone)"
+    clone["name"] = unique_clone_name(agents_repo, source["name"])
     clone["version"] = bump_major(source.get("version", DEFAULT_VERSION))
     clone["owner"] = user
     clone["visibility"] = "personal"
@@ -487,6 +522,8 @@ def create_workflow(workflow: WorkflowCreate, user: str = Depends(current_user))
     missing = [aid for aid in workflow.agent_ids if not step_exists(aid)]
     if missing:
         raise HTTPException(400, f"unknown agent/tool ids: {missing}")
+    if name_conflict(workflows_repo, workflow.name):
+        raise HTTPException(409, f"workflow '{workflow.name}' already exists")
     data = workflow.model_dump()
     data["version"] = DEFAULT_VERSION
     data["owner"] = user
@@ -515,6 +552,8 @@ def update_workflow(workflow_id: str, workflow: WorkflowCreate) -> dict:
     missing = [aid for aid in workflow.agent_ids if not step_exists(aid)]
     if missing:
         raise HTTPException(400, f"unknown agent/tool ids: {missing}")
+    if name_conflict(workflows_repo, workflow.name, exclude_id=workflow_id):
+        raise HTTPException(409, f"workflow '{workflow.name}' already exists")
 
     snapshot_version(workflow_versions_repo, "workflow_id", existing)
     updated = workflow.model_dump()
@@ -534,6 +573,8 @@ def overwrite_workflow(workflow_id: str, workflow: WorkflowCreate) -> dict:
     missing = [aid for aid in workflow.agent_ids if not step_exists(aid)]
     if missing:
         raise HTTPException(400, f"unknown agent/tool ids: {missing}")
+    if name_conflict(workflows_repo, workflow.name, exclude_id=workflow_id):
+        raise HTTPException(409, f"workflow '{workflow.name}' already exists")
 
     updated = workflow.model_dump()
     updated["id"] = workflow_id
@@ -557,7 +598,7 @@ def clone_workflow(workflow_id: str, user: str = Depends(current_user)) -> dict:
         raise HTTPException(404, "workflow not found")
 
     clone = {k: v for k, v in source.items() if k != "id"}
-    clone["name"] = f"{source['name']} (clone)"
+    clone["name"] = unique_clone_name(workflows_repo, source["name"])
     clone["version"] = bump_major(source.get("version", DEFAULT_VERSION))
     clone["owner"] = user
     clone["visibility"] = "personal"
@@ -626,5 +667,12 @@ def run(workflow_id: str, request: RunRequest) -> dict:
     except RuntimeError as e:
         raise HTTPException(400, str(e)) from e
 
-    record_execution(workflow_executions_repo, "workflow_id", workflow_id, request.input, result)
+    record_execution(
+        workflow_executions_repo,
+        "workflow_id",
+        workflow_id,
+        request.input,
+        result,
+        extra={"workflow_version": workflow.get("version", DEFAULT_VERSION)},
+    )
     return result
