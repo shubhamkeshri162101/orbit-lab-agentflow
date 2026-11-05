@@ -243,8 +243,10 @@ export const api = {
   setAgentVisibility: (agentId: string, visibility: Visibility) =>
     setVisibility(`/agents/${agentId}/visibility`, visibility),
   forkAgent: (agentId: string) => request<Agent>(`/agents/${agentId}/fork`, { method: "POST" }),
-  publishAgent: (agentId: string) => request<Agent>(`/agents/${agentId}/publish`, { method: "POST" }),
-  cloneAgent: (agentId: string) => request<Agent>(`/agents/${agentId}/clone`, { method: "POST" }),
+  publishAgent: (agentId: string, versionId?: string) =>
+    request<Agent>(`/agents/${agentId}/publish${versionId ? `?version_id=${versionId}` : ""}`, { method: "POST" }),
+  cloneAgent: (agentId: string, versionId?: string) =>
+    request<Agent>(`/agents/${agentId}/clone${versionId ? `?version_id=${versionId}` : ""}`, { method: "POST" }),
   listAgentVersions: (agentId: string) => request<AgentVersion[]>(`/agents/${agentId}/versions`),
   restoreAgentVersion: (agentId: string, versionId: string) =>
     request<Agent>(`/agents/${agentId}/versions/${versionId}/restore`, { method: "POST" }),
@@ -261,9 +263,15 @@ export const api = {
     request<{ deleted: string }>(`/workflows/${workflowId}`, { method: "DELETE" }),
   setWorkflowVisibility: (workflowId: string, visibility: Visibility) =>
     setVisibility(`/workflows/${workflowId}/visibility`, visibility),
-  cloneWorkflow: (workflowId: string) => request<Workflow>(`/workflows/${workflowId}/clone`, { method: "POST" }),
+  cloneWorkflow: (workflowId: string, versionId?: string) =>
+    request<Workflow>(`/workflows/${workflowId}/clone${versionId ? `?version_id=${versionId}` : ""}`, {
+      method: "POST",
+    }),
   forkWorkflow: (workflowId: string) => request<Workflow>(`/workflows/${workflowId}/fork`, { method: "POST" }),
-  publishWorkflow: (workflowId: string) => request<Workflow>(`/workflows/${workflowId}/publish`, { method: "POST" }),
+  publishWorkflow: (workflowId: string, versionId?: string) =>
+    request<Workflow>(`/workflows/${workflowId}/publish${versionId ? `?version_id=${versionId}` : ""}`, {
+      method: "POST",
+    }),
   listWorkflowVersions: (workflowId: string) =>
     request<WorkflowVersion[]>(`/workflows/${workflowId}/versions`),
   restoreWorkflowVersion: (workflowId: string, versionId: string) =>

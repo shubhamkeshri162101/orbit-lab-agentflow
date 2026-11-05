@@ -24,7 +24,7 @@ from src.api.models import (
     VisibilityUpdate,
     WorkflowCreate,
 )
-from src.api.versioning import DEFAULT_VERSION, bump_major, bump_patch
+from src.api.versioning import DEFAULT_VERSION, bump_major, bump_minor, bump_patch
 from src.mcp_client.client import discover_tools as discover_mcp_tools
 from src.orchestrator.orchestrator import run_workflow
 from src.storage.repository import Repository
@@ -82,6 +82,33 @@ def visible_to(records: list[dict], user: str) -> list[dict]:
 def name_conflict(repo: Repository, name: str, exclude_id: str | None = None) -> bool:
     """True if another record in this table already has this name."""
     return any(r["name"] == name and r["id"] != exclude_id for r in repo.list())
+
+
+def resolve_basis(
+    repo: Repository, versions_repo: Repository, parent_id_field: str, record_id: str, version_id: str | None
+) -> dict | None:
+    """The record to clone/publish from: the resource's current state, or a
+    specific historical version's content (keeping the resource's own id so
+    the rest of the clone/publish logic doesn't need to care which)."""
+    current = repo.get(record_id)
+    if current is None:
+        return None
+    if not version_id or version_id == "current":
+        return current
+    snapshot = versions_repo.get(version_id)
+    if snapshot is None or snapshot.get(parent_id_field) != record_id:
+        return None
+    resolved = {k: v for k, v in snapshot.items() if k not in (parent_id_field, "versioned_at")}
+    resolved["id"] = record_id
+    return resolved
+
+
+def require_not_public(record: dict, kind: str) -> None:
+    """Blocks deleting a public resource outright -- it may be in active use
+    by other users, who'd otherwise lose it with no warning. Make it
+    personal (or fork it, for a resource with a fork/publish flow) first."""
+    if record.get("visibility") == "public":
+        raise HTTPException(409, f"can't delete a public {kind} — make it personal first")
 
 
 def unique_named(repo: Repository, base_name: str, label: str) -> str:
@@ -158,6 +185,7 @@ def create_model(model: ModelCreate, user: str = Depends(current_user)) -> dict:
         raise HTTPException(400, f"provider must be one of {list(PROVIDER_ENV_VARS)}")
     data = model.model_dump()
     data["owner"] = user
+    data["visibility"] = "personal"  # new resources always start personal — publish explicitly
     return models_repo.put(data)
 
 
@@ -247,6 +275,7 @@ def delete_model(model_id: str) -> dict:
     model = models_repo.get(model_id)
     if model is None:
         raise HTTPException(404, "model not found")
+    require_not_public(model, "model")
 
     referencing = [a["name"] for a in agents_repo.list() if a.get("model") == model["name"]]
     if referencing:
@@ -270,6 +299,7 @@ def create_tool(tool: ToolCreate, user: str = Depends(current_user)) -> dict:
         raise HTTPException(409, f"tool '{tool.name}' already exists")
     data = tool.model_dump()
     data["owner"] = user
+    data["visibility"] = "personal"  # new resources always start personal — publish explicitly
     return tools_repo.put(data)
 
 
@@ -357,8 +387,10 @@ def publish_tool(tool_id: str) -> dict:
 
 @app.delete("/tools/{tool_id}")
 def delete_tool(tool_id: str) -> dict:
-    if tools_repo.get(tool_id) is None:
+    tool = tools_repo.get(tool_id)
+    if tool is None:
         raise HTTPException(404, "tool not found")
+    require_not_public(tool, "tool")
 
     referencing = [w["name"] for w in workflows_repo.list() if tool_id in w["agent_ids"]]
     if referencing:
@@ -401,6 +433,7 @@ def run_single_tool(tool_id: str, request: RunRequest) -> dict:
 def create_mcp_server(server: McpServerCreate, user: str = Depends(current_user)) -> dict:
     data = server.model_dump()
     data["owner"] = user
+    data["visibility"] = "personal"  # new resources always start personal — publish explicitly
     return mcp_servers_repo.put(data)
 
 
@@ -419,8 +452,10 @@ def set_mcp_server_visibility(server_id: str, body: VisibilityUpdate) -> dict:
 
 @app.delete("/mcp-servers/{server_id}")
 def delete_mcp_server(server_id: str) -> dict:
-    if mcp_servers_repo.get(server_id) is None:
+    server = mcp_servers_repo.get(server_id)
+    if server is None:
         raise HTTPException(404, "mcp server not found")
+    require_not_public(server, "mcp server")
 
     referencing = [t["name"] for t in tools_repo.list() if t.get("mcp_server_id") == server_id]
     if referencing:
@@ -480,6 +515,7 @@ def create_agent(agent: AgentCreate, user: str = Depends(current_user)) -> dict:
     data = agent.model_dump()
     data["version"] = DEFAULT_VERSION
     data["owner"] = user
+    data["visibility"] = "personal"  # new resources always start personal — publish explicitly
     return agents_repo.put(data)
 
 
@@ -543,10 +579,10 @@ def set_agent_visibility(agent_id: str, body: VisibilityUpdate) -> dict:
 
 
 @app.post("/agents/{agent_id}/clone")
-def clone_agent(agent_id: str, user: str = Depends(current_user)) -> dict:
-    source = agents_repo.get(agent_id)
+def clone_agent(agent_id: str, user: str = Depends(current_user), version_id: str | None = None) -> dict:
+    source = resolve_basis(agents_repo, agent_versions_repo, "agent_id", agent_id, version_id)
     if source is None:
-        raise HTTPException(404, "agent not found")
+        raise HTTPException(404, "agent or version not found")
 
     clone = {k: v for k, v in source.items() if k != "id"}
     clone["name"] = unique_clone_name(agents_repo, source["name"])
@@ -568,6 +604,7 @@ def fork_agent(agent_id: str, user: str = Depends(current_user)) -> dict:
 
     fork = {k: v for k, v in source.items() if k != "id"}
     fork["name"] = unique_named(agents_repo, source["name"], "personal draft")
+    fork["version"] = bump_minor(source.get("version", DEFAULT_VERSION))
     fork["owner"] = user
     fork["visibility"] = "personal"
     fork["forked_from"] = agent_id
@@ -575,14 +612,15 @@ def fork_agent(agent_id: str, user: str = Depends(current_user)) -> dict:
 
 
 @app.post("/agents/{agent_id}/publish")
-def publish_agent(agent_id: str) -> dict:
-    """Publishes a personal draft's current definition onto the agent it was
-    forked from, bumping that agent's version and snapshotting its history,
-    then removes the now-merged draft. A personal agent with no fork origin
-    just becomes public in place."""
-    draft = agents_repo.get(agent_id)
+def publish_agent(agent_id: str, version_id: str | None = None) -> dict:
+    """Publishes a personal draft's definition onto the agent it was forked
+    from -- by default the draft's current state, or a specific version from
+    the draft's own history when version_id is given -- bumping that agent's
+    version and snapshotting its history, then removes the now-merged draft.
+    A personal agent with no fork origin just becomes public in place."""
+    draft = resolve_basis(agents_repo, agent_versions_repo, "agent_id", agent_id, version_id)
     if draft is None:
-        raise HTTPException(404, "agent not found")
+        raise HTTPException(404, "agent or version not found")
 
     origin_id = draft.get("forked_from")
     if not origin_id:
@@ -609,8 +647,10 @@ def publish_agent(agent_id: str) -> dict:
 
 @app.delete("/agents/{agent_id}")
 def delete_agent(agent_id: str) -> dict:
-    if agents_repo.get(agent_id) is None:
+    agent = agents_repo.get(agent_id)
+    if agent is None:
         raise HTTPException(404, "agent not found")
+    require_not_public(agent, "agent")
 
     referencing = [w["name"] for w in workflows_repo.list() if agent_id in w["agent_ids"]]
     if referencing:
@@ -689,6 +729,7 @@ def create_workflow(workflow: WorkflowCreate, user: str = Depends(current_user))
     data = workflow.model_dump()
     data["version"] = DEFAULT_VERSION
     data["owner"] = user
+    data["visibility"] = "personal"  # new resources always start personal — publish explicitly
     return workflows_repo.put(data)
 
 
@@ -756,10 +797,10 @@ def set_workflow_visibility(workflow_id: str, body: VisibilityUpdate) -> dict:
 
 
 @app.post("/workflows/{workflow_id}/clone")
-def clone_workflow(workflow_id: str, user: str = Depends(current_user)) -> dict:
-    source = workflows_repo.get(workflow_id)
+def clone_workflow(workflow_id: str, user: str = Depends(current_user), version_id: str | None = None) -> dict:
+    source = resolve_basis(workflows_repo, workflow_versions_repo, "workflow_id", workflow_id, version_id)
     if source is None:
-        raise HTTPException(404, "workflow not found")
+        raise HTTPException(404, "workflow or version not found")
 
     clone = {k: v for k, v in source.items() if k != "id"}
     clone["name"] = unique_clone_name(workflows_repo, source["name"])
@@ -782,6 +823,7 @@ def fork_workflow(workflow_id: str, user: str = Depends(current_user)) -> dict:
 
     fork = {k: v for k, v in source.items() if k != "id"}
     fork["name"] = unique_named(workflows_repo, source["name"], "personal draft")
+    fork["version"] = bump_minor(source.get("version", DEFAULT_VERSION))
     fork["owner"] = user
     fork["visibility"] = "personal"
     fork["forked_from"] = workflow_id
@@ -789,15 +831,16 @@ def fork_workflow(workflow_id: str, user: str = Depends(current_user)) -> dict:
 
 
 @app.post("/workflows/{workflow_id}/publish")
-def publish_workflow(workflow_id: str) -> dict:
-    """Publishes a personal draft's current steps/start_inputs onto the public
-    workflow it was forked from: snapshots the public workflow's current
-    version, bumps it, and removes the now-merged draft. A personal workflow
-    with no fork origin just becomes public in place -- there's nothing to
-    merge back onto."""
-    draft = workflows_repo.get(workflow_id)
+def publish_workflow(workflow_id: str, version_id: str | None = None) -> dict:
+    """Publishes a personal draft's steps/start_inputs onto the public
+    workflow it was forked from -- by default the draft's current state, or a
+    specific version from the draft's own history when version_id is given --
+    snapshotting the public workflow's version and bumping it, then removes
+    the now-merged draft. A personal workflow with no fork origin just
+    becomes public in place -- there's nothing to merge back onto."""
+    draft = resolve_basis(workflows_repo, workflow_versions_repo, "workflow_id", workflow_id, version_id)
     if draft is None:
-        raise HTTPException(404, "workflow not found")
+        raise HTTPException(404, "workflow or version not found")
 
     origin_id = draft.get("forked_from")
     if not origin_id:
@@ -825,8 +868,10 @@ def publish_workflow(workflow_id: str) -> dict:
 
 @app.delete("/workflows/{workflow_id}")
 def delete_workflow(workflow_id: str) -> dict:
-    if workflows_repo.get(workflow_id) is None:
+    workflow = workflows_repo.get(workflow_id)
+    if workflow is None:
         raise HTTPException(404, "workflow not found")
+    require_not_public(workflow, "workflow")
     workflows_repo.delete(workflow_id)
     return {"deleted": workflow_id}
 

@@ -1,6 +1,7 @@
 import { Button, Surface, Typography } from "@oaknorthbank/components";
 import { useEffect, useState } from "react";
 import { HStack, VStack } from "../components/Stacks";
+import { VersionPickerModal } from "../components/VersionPickerModal";
 import { VisibilityControl } from "../components/VisibilityControl";
 import { api, type Agent } from "../api";
 import { AgentExecutionHistoryPanel, AgentVersionSelector, TestAgentPanel } from "./agentPanels";
@@ -65,7 +66,8 @@ export function AgentDetailView({
   onCloned: (agent: Agent) => void;
 }) {
   const [agent, setAgent] = useState<Agent | null>(null);
-  const [cloning, setCloning] = useState(false);
+  const [cloneModalOpen, setCloneModalOpen] = useState(false);
+  const [publishModalOpen, setPublishModalOpen] = useState(false);
   const [executionRefreshToken, setExecutionRefreshToken] = useState(0);
 
   function refresh() {
@@ -73,15 +75,6 @@ export function AgentDetailView({
   }
 
   useEffect(refresh, [agentId]);
-
-  async function handleClone() {
-    setCloning(true);
-    try {
-      onCloned(await api.cloneAgent(agentId));
-    } finally {
-      setCloning(false);
-    }
-  }
 
   if (agent === null) {
     return <Typography.Caption>Loading agent…</Typography.Caption>;
@@ -106,8 +99,9 @@ export function AgentDetailView({
                     }
                     if (agent.forked_from) {
                       // Publishing deletes this draft and updates the
-                      // original by id, so follow navigation there.
-                      onCloned(await api.publishAgent(agent.id));
+                      // original by id -- ask which version of the draft to
+                      // publish before doing either.
+                      setPublishModalOpen(true);
                       return;
                     }
                     await api.setAgentVisibility(agent.id, next);
@@ -117,10 +111,38 @@ export function AgentDetailView({
               </HStack>
               <HStack gap="0.5rem" alignItems="center">
                 <AgentVersionSelector agent={agent} onRestored={refresh} />
-                <Button.Secondary label={cloning ? "Cloning…" : "Clone"} onPress={handleClone} disabled={cloning} />
+                <Button.Secondary label="Clone" onPress={() => setCloneModalOpen(true)} />
                 <Button.Flat label="Back" onPress={onBack} />
               </HStack>
             </HStack>
+
+            <VersionPickerModal
+              isOpen={cloneModalOpen}
+              onClose={() => setCloneModalOpen(false)}
+              onConfirm={async (versionId) => {
+                onCloned(await api.cloneAgent(agent.id, versionId));
+                setCloneModalOpen(false);
+              }}
+              action="clone"
+              kind="agent"
+              name={agent.name}
+              currentVersion={agent.version}
+              loadVersions={() => api.listAgentVersions(agent.id)}
+            />
+
+            <VersionPickerModal
+              isOpen={publishModalOpen}
+              onClose={() => setPublishModalOpen(false)}
+              onConfirm={async (versionId) => {
+                onCloned(await api.publishAgent(agent.id, versionId));
+                setPublishModalOpen(false);
+              }}
+              action="publish"
+              kind="agent"
+              name={agent.name}
+              currentVersion={agent.version}
+              loadVersions={() => api.listAgentVersions(agent.id)}
+            />
 
             {agent.forked_from && (
               <Typography.Caption>

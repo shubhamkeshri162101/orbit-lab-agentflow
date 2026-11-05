@@ -12,6 +12,7 @@ import {
 } from "@oaknorthbank/components";
 import IconTrash from "@oaknorthbank/graphics/icons/IconTrash";
 import { useEffect, useState } from "react";
+import { DeleteConfirmModal } from "../components/DeleteConfirmModal";
 import { HStack, VStack } from "../components/Stacks";
 import { VisibilityBadge, VisibilityControl, VisibilityToggleButton } from "../components/VisibilityControl";
 import {
@@ -308,16 +309,21 @@ function ToolCard({
   onOpen: (tool: Tool) => void;
   onChanged: () => void;
 }) {
+  const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
 
   async function handleDelete() {
     setDeleteError("");
+    setDeleting(true);
     try {
       await api.deleteTool(tool.id);
+      setConfirming(false);
       onChanged();
     } catch (e) {
       setDeleteError(String(e));
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -330,12 +336,27 @@ function ToolCard({
             <LanguageBadge language={tool.language} />
             <VisibilityBadge visibility={tool.visibility} />
           </HStack>
-          {deleting ? (
-            <Button.Primary label="Confirm delete" destructive onPress={handleDelete} />
-          ) : (
-            <IconButton.Outlined icon={IconTrash} label="Delete tool" destructive onPress={() => setDeleting(true)} />
-          )}
+          <IconButton.Outlined
+            icon={IconTrash}
+            label={tool.visibility === "public" ? "Make personal to delete" : "Delete tool"}
+            destructive
+            disabled={tool.visibility === "public"}
+            onPress={() => {
+              setDeleteError("");
+              setConfirming(true);
+            }}
+          />
         </HStack>
+
+        <DeleteConfirmModal
+          isOpen={confirming}
+          onClose={() => setConfirming(false)}
+          onConfirm={handleDelete}
+          kind="tool"
+          name={tool.name}
+          deleting={deleting}
+          error={deleteError}
+        />
 
         <VStack gap="0.4rem">
           {tool.description && (
@@ -357,8 +378,6 @@ function ToolCard({
             <Typography.Body small>{tool.writes || tool.name}</Typography.Body>
           </VStack>
         </VStack>
-
-        {deleteError && <Alert level="error" title={deleteError} />}
 
         <HStack gap="0.5rem" alignItems="center" style={{ marginTop: "auto" }}>
           <Button.Secondary label="Open" onPress={() => onOpen(tool)} />
@@ -622,6 +641,7 @@ function McpServerCard({
   server: McpServer;
   onChanged: () => void;
 }) {
+  const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
   const [discovered, setDiscovered] = useState<DiscoveredMcpTool[] | null>(null);
@@ -640,11 +660,15 @@ function McpServerCard({
 
   async function handleDelete() {
     setDeleteError("");
+    setDeleting(true);
     try {
       await api.deleteMcpServer(server.id);
+      setConfirming(false);
       onChanged();
     } catch (e) {
       setDeleteError(String(e));
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -694,14 +718,27 @@ function McpServerCard({
               </Typography.Caption>
             )}
           </VStack>
-          {deleting ? (
-            <Button.Primary label="Confirm delete" destructive onPress={handleDelete} />
-          ) : (
-            <IconButton.Outlined icon={IconTrash} label="Delete MCP server" destructive onPress={() => setDeleting(true)} />
-          )}
+          <IconButton.Outlined
+            icon={IconTrash}
+            label={server.visibility === "public" ? "Make personal to delete" : "Delete MCP server"}
+            destructive
+            disabled={server.visibility === "public"}
+            onPress={() => {
+              setDeleteError("");
+              setConfirming(true);
+            }}
+          />
         </HStack>
 
-        {deleteError && <Alert level="error" title={deleteError} />}
+        <DeleteConfirmModal
+          isOpen={confirming}
+          onClose={() => setConfirming(false)}
+          onConfirm={handleDelete}
+          kind="MCP server"
+          name={server.name}
+          deleting={deleting}
+          error={deleteError}
+        />
 
         <div>
           <Button.Secondary
