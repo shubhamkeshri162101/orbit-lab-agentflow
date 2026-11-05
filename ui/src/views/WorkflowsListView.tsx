@@ -1,7 +1,9 @@
-import { Alert, Button, IconButton, Surface, Typography } from "@oaknorthbank/components";
+import { Button, IconButton, Surface, Typography } from "@oaknorthbank/components";
 import IconTrash from "@oaknorthbank/graphics/icons/IconTrash";
 import { useEffect, useState } from "react";
+import { DeleteConfirmModal } from "../components/DeleteConfirmModal";
 import { HStack, VStack } from "../components/Stacks";
+import { VersionPickerModal } from "../components/VersionPickerModal";
 import { VisibilityBadge, VisibilityToggleButton } from "../components/VisibilityControl";
 import { api, type Agent, type Tool, type Workflow } from "../api";
 
@@ -20,17 +22,23 @@ function WorkflowCard({
   onDeleted: () => void;
   onChanged: () => void;
 }) {
+  const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const [publishModalOpen, setPublishModalOpen] = useState(false);
   const nameOf = (id: string) => agents.find((a) => a.id === id)?.name ?? tools.find((t) => t.id === id)?.name ?? id;
 
   async function handleDelete() {
     setDeleteError("");
+    setDeleting(true);
     try {
       await api.deleteWorkflow(workflow.id);
+      setConfirming(false);
       onDeleted();
     } catch (e) {
       setDeleteError(String(e));
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -42,16 +50,16 @@ function WorkflowCard({
             <Typography.Body fontWeight="semibold">{workflow.name}</Typography.Body>
             <VisibilityBadge visibility={workflow.visibility} />
           </HStack>
-          {deleting ? (
-            <Button.Primary label="Confirm delete" destructive onPress={handleDelete} />
-          ) : (
-            <IconButton.Outlined
-              icon={IconTrash}
-              label="Delete workflow"
-              destructive
-              onPress={() => setDeleting(true)}
-            />
-          )}
+          <IconButton.Outlined
+            icon={IconTrash}
+            label={workflow.visibility === "public" ? "Make personal to delete" : "Delete workflow"}
+            destructive
+            disabled={workflow.visibility === "public"}
+            onPress={() => {
+              setDeleteError("");
+              setConfirming(true);
+            }}
+          />
         </HStack>
 
         <VStack gap="0.15rem">
@@ -61,7 +69,16 @@ function WorkflowCard({
           </Typography.Caption>
         </VStack>
 
-        {deleteError && <Alert level="error" title={deleteError} />}
+        <DeleteConfirmModal
+          isOpen={confirming}
+          onClose={() => setConfirming(false)}
+          onConfirm={handleDelete}
+          kind="workflow"
+          name={workflow.name}
+          version={workflow.version}
+          deleting={deleting}
+          error={deleteError}
+        />
 
         <HStack gap="0.5rem" alignItems="center" style={{ marginTop: "auto" }}>
           <Button.Secondary label="Open" onPress={() => onOpen(workflow)} />
@@ -75,14 +92,30 @@ function WorkflowCard({
                 return;
               }
               if (workflow.forked_from) {
-                await api.publishWorkflow(workflow.id);
-              } else {
-                await api.setWorkflowVisibility(workflow.id, next);
+                // Ask which version of the draft to publish before merging it.
+                setPublishModalOpen(true);
+                return;
               }
+              await api.setWorkflowVisibility(workflow.id, next);
               onChanged();
             }}
           />
         </HStack>
+
+        <VersionPickerModal
+          isOpen={publishModalOpen}
+          onClose={() => setPublishModalOpen(false)}
+          onConfirm={async (versionId) => {
+            await api.publishWorkflow(workflow.id, versionId);
+            setPublishModalOpen(false);
+            onChanged();
+          }}
+          action="publish"
+          kind="workflow"
+          name={workflow.name}
+          currentVersion={workflow.version}
+          loadVersions={() => api.listWorkflowVersions(workflow.id)}
+        />
       </VStack>
     </Surface>
   );

@@ -2,6 +2,7 @@ import { Alert, Button, IconButton, InputGroup, Select, Surface, Typography } fr
 import IconPencil from "@oaknorthbank/graphics/icons/IconPencil";
 import IconTrash from "@oaknorthbank/graphics/icons/IconTrash";
 import { useEffect, useState } from "react";
+import { DeleteConfirmModal } from "../components/DeleteConfirmModal";
 import { HStack, VStack } from "../components/Stacks";
 import { VisibilityBadge, VisibilityToggleButton } from "../components/VisibilityControl";
 import { api, PROVIDER_ENV_VARS, type ModelInfo, type Provider } from "../api";
@@ -91,16 +92,21 @@ function ModelCard({ model, onChanged }: { model: ModelInfo; onChanged: () => vo
   }
 
   const [editing, setEditing] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
 
   async function handleDelete() {
     setDeleteError("");
+    setDeleting(true);
     try {
       await api.deleteModel(model.id);
+      setConfirming(false);
       onChanged();
     } catch (e) {
       setDeleteError(String(e));
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -131,18 +137,28 @@ function ModelCard({ model, onChanged }: { model: ModelInfo; onChanged: () => vo
           </HStack>
           <HStack gap="0.4rem">
             <IconButton.Outlined icon={IconPencil} label="Edit model" onPress={() => setEditing(true)} />
-            {deleting ? (
-              <Button.Primary label="Confirm delete" destructive onPress={handleDelete} />
-            ) : (
-              <IconButton.Outlined
-                icon={IconTrash}
-                label="Delete model"
-                destructive
-                onPress={() => setDeleting(true)}
-              />
-            )}
+            <IconButton.Outlined
+              icon={IconTrash}
+              label={model.visibility === "public" ? "Make personal to delete" : "Delete model"}
+              destructive
+              disabled={model.visibility === "public"}
+              onPress={() => {
+                setDeleteError("");
+                setConfirming(true);
+              }}
+            />
           </HStack>
         </HStack>
+
+        <DeleteConfirmModal
+          isOpen={confirming}
+          onClose={() => setConfirming(false)}
+          onConfirm={handleDelete}
+          kind="model"
+          name={model.name}
+          deleting={deleting}
+          error={deleteError}
+        />
 
         <div>
           <VisibilityToggleButton visibility={model.visibility} onToggle={handleToggleVisibility} />
@@ -169,8 +185,6 @@ function ModelCard({ model, onChanged }: { model: ModelInfo; onChanged: () => vo
             <Typography.Body small>{model.use_case || "—"}</Typography.Body>
           </VStack>
         </VStack>
-
-        {deleteError && <Alert level="error" title={deleteError} />}
       </VStack>
     </Surface>
   );

@@ -1,4 +1,4 @@
-from src.api.versioning import DEFAULT_VERSION, bump_major, bump_patch
+from src.api.versioning import DEFAULT_VERSION, bump_major, bump_minor, bump_patch
 
 
 def test_default_version():
@@ -21,3 +21,12 @@ def test_bump_patch_rolls_over_to_major():
 def test_bump_major_resets_minor_and_patch():
     assert bump_major("1.5.3") == "2.0.0"
     assert bump_major("4.0.0") == "5.0.0"
+
+
+def test_bump_minor_leaves_patch_untouched():
+    assert bump_minor("1.0.1") == "1.1.1"
+    assert bump_minor("1.5.3") == "1.6.3"
+
+
+def test_bump_minor_rolls_over_to_major():
+    assert bump_minor("1.99.7") == "2.0.7"

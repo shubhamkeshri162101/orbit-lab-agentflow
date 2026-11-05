@@ -1,6 +1,7 @@
 import { Button, Surface, Typography } from "@oaknorthbank/components";
 import { useEffect, useState } from "react";
 import { HStack, VStack } from "../components/Stacks";
+import { VersionPickerModal } from "../components/VersionPickerModal";
 import { VisibilityControl } from "../components/VisibilityControl";
 import { api, type Workflow } from "../api";
 import { RunWorkflowPanel, WorkflowExecutionHistoryPanel, WorkflowVersionSelector } from "./workflowPanels";
@@ -90,7 +91,8 @@ export function WorkflowDetailView({
   onCloned: (workflow: Workflow) => void;
 }) {
   const [workflow, setWorkflow] = useState<Workflow | null>(null);
-  const [cloning, setCloning] = useState(false);
+  const [cloneModalOpen, setCloneModalOpen] = useState(false);
+  const [publishModalOpen, setPublishModalOpen] = useState(false);
   const [executionRefreshToken, setExecutionRefreshToken] = useState(0);
 
   function refresh() {
@@ -98,15 +100,6 @@ export function WorkflowDetailView({
   }
 
   useEffect(refresh, [workflowId]);
-
-  async function handleClone() {
-    setCloning(true);
-    try {
-      onCloned(await api.cloneWorkflow(workflowId));
-    } finally {
-      setCloning(false);
-    }
-  }
 
   if (workflow === null) {
     return <Typography.Caption>Loading workflow…</Typography.Caption>;
@@ -131,8 +124,9 @@ export function WorkflowDetailView({
                     }
                     if (workflow.forked_from) {
                       // Publishing deletes this draft and updates the
-                      // original by id, so follow navigation there.
-                      onCloned(await api.publishWorkflow(workflow.id));
+                      // original by id -- ask which version of the draft to
+                      // publish before doing either.
+                      setPublishModalOpen(true);
                       return;
                     }
                     await api.setWorkflowVisibility(workflow.id, next);
@@ -142,10 +136,38 @@ export function WorkflowDetailView({
               </HStack>
               <HStack gap="0.5rem" alignItems="center">
                 <WorkflowVersionSelector workflow={workflow} onRestored={refresh} />
-                <Button.Secondary label={cloning ? "Cloning…" : "Clone"} onPress={handleClone} disabled={cloning} />
+                <Button.Secondary label="Clone" onPress={() => setCloneModalOpen(true)} />
                 <Button.Flat label="Back" onPress={onBack} />
               </HStack>
             </HStack>
+
+            <VersionPickerModal
+              isOpen={cloneModalOpen}
+              onClose={() => setCloneModalOpen(false)}
+              onConfirm={async (versionId) => {
+                onCloned(await api.cloneWorkflow(workflow.id, versionId));
+                setCloneModalOpen(false);
+              }}
+              action="clone"
+              kind="workflow"
+              name={workflow.name}
+              currentVersion={workflow.version}
+              loadVersions={() => api.listWorkflowVersions(workflow.id)}
+            />
+
+            <VersionPickerModal
+              isOpen={publishModalOpen}
+              onClose={() => setPublishModalOpen(false)}
+              onConfirm={async (versionId) => {
+                onCloned(await api.publishWorkflow(workflow.id, versionId));
+                setPublishModalOpen(false);
+              }}
+              action="publish"
+              kind="workflow"
+              name={workflow.name}
+              currentVersion={workflow.version}
+              loadVersions={() => api.listWorkflowVersions(workflow.id)}
+            />
 
             {workflow.forked_from && (
               <Typography.Caption>

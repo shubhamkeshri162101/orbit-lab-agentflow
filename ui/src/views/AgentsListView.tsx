@@ -1,7 +1,9 @@
-import { Alert, Button, IconButton, Surface, Typography } from "@oaknorthbank/components";
+import { Button, IconButton, Surface, Typography } from "@oaknorthbank/components";
 import IconTrash from "@oaknorthbank/graphics/icons/IconTrash";
 import { useEffect, useState } from "react";
+import { DeleteConfirmModal } from "../components/DeleteConfirmModal";
 import { HStack, VStack } from "../components/Stacks";
+import { VersionPickerModal } from "../components/VersionPickerModal";
 import { VisibilityBadge, VisibilityToggleButton } from "../components/VisibilityControl";
 import { api, type Agent } from "../api";
 
@@ -16,16 +18,22 @@ function AgentCard({
   onDeleted: () => void;
   onChanged: () => void;
 }) {
+  const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const [publishModalOpen, setPublishModalOpen] = useState(false);
 
   async function handleDelete() {
     setDeleteError("");
+    setDeleting(true);
     try {
       await api.deleteAgent(agent.id);
+      setConfirming(false);
       onDeleted();
     } catch (e) {
       setDeleteError(String(e));
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -37,16 +45,16 @@ function AgentCard({
             <Typography.Body fontWeight="semibold">{agent.name}</Typography.Body>
             <VisibilityBadge visibility={agent.visibility} />
           </HStack>
-          {deleting ? (
-            <Button.Primary label="Confirm delete" destructive onPress={handleDelete} />
-          ) : (
-            <IconButton.Outlined
-              icon={IconTrash}
-              label="Delete agent"
-              destructive
-              onPress={() => setDeleting(true)}
-            />
-          )}
+          <IconButton.Outlined
+            icon={IconTrash}
+            label={agent.visibility === "public" ? "Make personal to delete" : "Delete agent"}
+            destructive
+            disabled={agent.visibility === "public"}
+            onPress={() => {
+              setDeleteError("");
+              setConfirming(true);
+            }}
+          />
         </HStack>
 
         <VStack gap="0.15rem">
@@ -56,7 +64,16 @@ function AgentCard({
           <Typography.Caption>Timeout: {agent.timeout_seconds}s</Typography.Caption>
         </VStack>
 
-        {deleteError && <Alert level="error" title={deleteError} />}
+        <DeleteConfirmModal
+          isOpen={confirming}
+          onClose={() => setConfirming(false)}
+          onConfirm={handleDelete}
+          kind="agent"
+          name={agent.name}
+          version={agent.version}
+          deleting={deleting}
+          error={deleteError}
+        />
 
         <HStack gap="0.5rem" alignItems="center" style={{ marginTop: "auto" }}>
           <Button.Secondary label="Open" onPress={() => onOpen(agent)} />
@@ -70,14 +87,30 @@ function AgentCard({
                 return;
               }
               if (agent.forked_from) {
-                await api.publishAgent(agent.id);
-              } else {
-                await api.setAgentVisibility(agent.id, next);
+                // Ask which version of the draft to publish before merging it.
+                setPublishModalOpen(true);
+                return;
               }
+              await api.setAgentVisibility(agent.id, next);
               onChanged();
             }}
           />
         </HStack>
+
+        <VersionPickerModal
+          isOpen={publishModalOpen}
+          onClose={() => setPublishModalOpen(false)}
+          onConfirm={async (versionId) => {
+            await api.publishAgent(agent.id, versionId);
+            setPublishModalOpen(false);
+            onChanged();
+          }}
+          action="publish"
+          kind="agent"
+          name={agent.name}
+          currentVersion={agent.version}
+          loadVersions={() => api.listAgentVersions(agent.id)}
+        />
       </VStack>
     </Surface>
   );
