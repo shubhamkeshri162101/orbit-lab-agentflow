@@ -45,6 +45,7 @@ function stepNodeData(step: Step) {
     writes: writesKeyOf(step),
     kind: step.kind,
     language: tool ? (tool.source === "mcp" ? "mcp" : tool.language) : undefined,
+    version: step.kind === "agent" ? (step as Agent).version : undefined,
   };
 }
 

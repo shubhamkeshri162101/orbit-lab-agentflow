@@ -1,4 +1,4 @@
-import { Button, IconButton, InputGroup, Label, Surface, Typography } from "@oaknorthbank/components";
+import { Button, IconButton, InputGroup, Label, Select, Surface, Typography } from "@oaknorthbank/components";
 import IconTrash from "@oaknorthbank/graphics/icons/IconTrash";
 import { Background, Controls, Handle, Position, ReactFlow, type NodeProps } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -13,6 +13,7 @@ type AgentNodeData = {
   missing?: string[];
   kind?: "agent" | "tool";
   language?: string;
+  version?: string;
 };
 
 type StartNodeData = {
@@ -49,14 +50,17 @@ function StartNode({ data }: NodeProps) {
 // canvas, so a mismatch (an input no earlier node actually produces) is
 // visible before anyone runs the workflow, not just after a run fails.
 function AgentNode({ data }: NodeProps) {
-  const { label, variables = [], writes, missing = [], kind, language } = data as AgentNodeData;
+  const { label, variables = [], writes, missing = [], kind, language, version } = data as AgentNodeData;
 
   return (
     <div style={{ minWidth: 220 }}>
       <Surface rounded outlined elevated padding={12}>
         <Handle type="target" position={Position.Left} />
         <VStack gap="0.25rem">
-          <Typography.Body fontWeight="semibold">{label}</Typography.Body>
+          <HStack gap="0.4rem" alignItems="center">
+            <Typography.Body fontWeight="semibold">{label}</Typography.Body>
+            {version && <Typography.Caption>v{version}</Typography.Caption>}
+          </HStack>
           {kind === "tool" && <Typography.Caption>{language} tool</Typography.Caption>}
           {variables.length > 0 && (
             <Typography.Caption>
@@ -75,6 +79,13 @@ function AgentNode({ data }: NodeProps) {
 const nodeTypes = { agentNode: AgentNode, startNode: StartNode };
 
 export function WorkflowBuilderFields({ builder }: { builder: ReturnType<typeof useWorkflowBuilder> }) {
+  const onCanvas = new Set(builder.nodes.map((n) => n.id));
+  // Newest first — listAgents()/listTools() return insertion order, so
+  // reversing surfaces the latest ones at the top of the dropdown before
+  // anyone starts typing a search.
+  const addableAgents = [...builder.agents].reverse().filter((a) => !onCanvas.has(a.id));
+  const addableTools = [...builder.tools].reverse().filter((t) => !onCanvas.has(t.id));
+
   return (
     <VStack gap="1rem">
       <InputGroup
@@ -148,24 +159,47 @@ export function WorkflowBuilderFields({ builder }: { builder: ReturnType<typeof 
         )}
       </VStack>
 
-      <VStack gap="0.5rem">
-        <Typography.Body fontWeight="semibold">Add agent to canvas</Typography.Body>
-        <HStack gap="0.5rem" style={{ flexWrap: "wrap" }}>
-          {builder.agents.map((a) => (
-            <Button.Secondary key={a.id} label={`+ ${a.name}`} onPress={() => builder.addAgentNode(a)} />
-          ))}
-        </HStack>
-      </VStack>
+      <HStack gap="1rem" style={{ flexWrap: "wrap" }}>
+        <div style={{ width: 280 }}>
+          <Select
+            label="Add agent to canvas"
+            labelHardOverride="+ Add agent"
+            searchable
+            dropdownWidth={320}
+            disabled={addableAgents.length === 0}
+            options={addableAgents.map((a) => ({ value: a.id, label: a.name, helper: `v${a.version}` }))}
+            onChange={(option) => {
+              const agent = builder.agents.find((a) => a.id === option.value);
+              if (agent) builder.addAgentNode(agent);
+            }}
+          />
+          {addableAgents.length === 0 && (
+            <Typography.Caption>
+              {builder.agents.length === 0 ? "No agents yet — create one in the Agents tab." : "All agents are on the canvas."}
+            </Typography.Caption>
+          )}
+        </div>
 
-      <VStack gap="0.5rem">
-        <Typography.Body fontWeight="semibold">Add tool to canvas</Typography.Body>
-        <HStack gap="0.5rem" style={{ flexWrap: "wrap" }}>
-          {builder.tools.length === 0 && <Typography.Caption>No tools yet — create one in the Tools tab.</Typography.Caption>}
-          {builder.tools.map((t) => (
-            <Button.Secondary key={t.id} label={`+ ${t.name}`} onPress={() => builder.addToolNode(t)} />
-          ))}
-        </HStack>
-      </VStack>
+        <div style={{ width: 280 }}>
+          <Select
+            label="Add tool to canvas"
+            labelHardOverride="+ Add tool"
+            searchable
+            dropdownWidth={320}
+            disabled={addableTools.length === 0}
+            options={addableTools.map((t) => ({ value: t.id, label: t.name }))}
+            onChange={(option) => {
+              const tool = builder.tools.find((t) => t.id === option.value);
+              if (tool) builder.addToolNode(tool);
+            }}
+          />
+          {addableTools.length === 0 && (
+            <Typography.Caption>
+              {builder.tools.length === 0 ? "No tools yet — create one in the Tools tab." : "All tools are on the canvas."}
+            </Typography.Caption>
+          )}
+        </div>
+      </HStack>
 
       <Surface rounded outlined clipped>
         <div style={{ height: 400 }}>
