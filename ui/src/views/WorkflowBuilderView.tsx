@@ -23,6 +23,7 @@ export function WorkflowBuilderView({ onDone, onCancel }: { onDone: () => void; 
         name: builder.name,
         agent_ids: result,
         start_inputs: builder.startInputs.filter((si) => si.name.trim()),
+        output_schema: builder.parsedOutputSchema,
         visibility: "personal",
       });
       onDone();
@@ -49,7 +50,7 @@ export function WorkflowBuilderView({ onDone, onCancel }: { onDone: () => void; 
             <Button.Primary
               label={saving ? "Saving…" : "Save workflow"}
               onPress={handleSave}
-              disabled={!builder.name || saving}
+              disabled={!builder.name || saving || !!builder.outputSchemaError}
             />
           </HStack>
         </VStack>

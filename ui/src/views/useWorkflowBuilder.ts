@@ -149,8 +149,26 @@ export function useWorkflowBuilder(workflow?: Workflow) {
   const [edges, setEdges, onEdgesChangeRaw] = useEdgesState<Edge>([]);
   const [name, setNameRaw] = useState(workflow?.name ?? "");
   const [startInputs, setStartInputsRaw] = useState<StartInput[]>(workflow?.start_inputs ?? []);
+  const [outputSchemaText, setOutputSchemaTextRaw] = useState(
+    workflow?.output_schema ? JSON.stringify(workflow.output_schema, null, 2) : ""
+  );
   const [dirty, setDirty] = useState(false);
   const initialized = useRef(false);
+
+  let outputSchemaError = "";
+  let parsedOutputSchema: Record<string, unknown> | null = null;
+  if (outputSchemaText.trim()) {
+    try {
+      parsedOutputSchema = JSON.parse(outputSchemaText);
+    } catch {
+      outputSchemaError = "Output format must be valid JSON (a JSON Schema object).";
+    }
+  }
+
+  function setOutputSchemaText(value: string) {
+    setOutputSchemaTextRaw(value);
+    setDirty(true);
+  }
 
   useEffect(() => {
     api.listAgents().then((a) => {
@@ -295,6 +313,10 @@ export function useWorkflowBuilder(workflow?: Workflow) {
     addStartInput,
     updateStartInput,
     removeStartInput,
+    outputSchemaText,
+    setOutputSchemaText,
+    outputSchemaError,
+    parsedOutputSchema,
     dirty,
     buildOrder,
   };

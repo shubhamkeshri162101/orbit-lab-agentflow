@@ -127,6 +127,28 @@ export function WorkflowBuilderFields({ builder }: { builder: ReturnType<typeof 
       </VStack>
 
       <VStack gap="0.5rem">
+        <InputGroup
+          type="TextArea"
+          label="Output format (JSON Schema, optional)"
+          description={
+            'Leave blank for free-form output. When set, the end node (the last step before End) is constrained ' +
+            'to return JSON matching this schema if it doesn\'t already declare its own — e.g. ' +
+            '{"type":"object","properties":{"summary":{"type":"string"}},"required":["summary"]}'
+          }
+          inputProps={{
+            value: builder.outputSchemaText,
+            placeholder: '{"type":"object","properties":{...},"required":[...]}',
+            rows: 4,
+            onChange: builder.setOutputSchemaText,
+            accessibilityLabel: "Workflow output format JSON schema",
+          }}
+        />
+        {builder.outputSchemaError && (
+          <Typography.Caption colour="errorText">{builder.outputSchemaError}</Typography.Caption>
+        )}
+      </VStack>
+
+      <VStack gap="0.5rem">
         <Typography.Body fontWeight="semibold">Add agent to canvas</Typography.Body>
         <HStack gap="0.5rem" style={{ flexWrap: "wrap" }}>
           {builder.agents.map((a) => (

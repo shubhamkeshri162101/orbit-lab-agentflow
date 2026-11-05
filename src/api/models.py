@@ -42,6 +42,13 @@ class WorkflowCreate(BaseModel):
     name: str
     agent_ids: list[str]
     start_inputs: list[StartInput] = Field(default_factory=list)
+    # Optional JSON Schema the workflow's end node (its last step) must
+    # conform to. When the end node is an agent with no output_schema of its
+    # own, this constrains its real model calls the same way an agent-level
+    # output_schema does; it's always checked against the end node's actual
+    # output afterwards, so a tool end node or a mismatch still surfaces as
+    # output_schema_errors on the run result instead of failing silently.
+    output_schema: dict[str, Any] | None = None
     visibility: Visibility = "personal"
 
 
