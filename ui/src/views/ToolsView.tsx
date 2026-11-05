@@ -365,7 +365,17 @@ function ToolCard({
           <VisibilityToggleButton
             visibility={tool.visibility}
             onToggle={async (next) => {
-              await api.setToolVisibility(tool.id, next);
+              if (next === "personal") {
+                // Never edit the public tool in place -- fork a personal
+                // draft the user can safely change, then jump straight to it.
+                onOpen(await api.forkTool(tool.id));
+                return;
+              }
+              if (tool.forked_from) {
+                await api.publishTool(tool.id);
+              } else {
+                await api.setToolVisibility(tool.id, next);
+              }
               onChanged();
             }}
           />
@@ -377,7 +387,15 @@ function ToolCard({
 
 const SIDE_PANEL_WIDTH = 380;
 
-function ToolDetailView({ toolId, onBack }: { toolId: string; onBack: () => void }) {
+function ToolDetailView({
+  toolId,
+  onBack,
+  onNavigate,
+}: {
+  toolId: string;
+  onBack: () => void;
+  onNavigate: (toolId: string) => void;
+}) {
   const [tool, setTool] = useState<Tool | null>(null);
   const [displayName, setDisplayName] = useState("");
   const [executionRefreshToken, setExecutionRefreshToken] = useState(0);
@@ -407,6 +425,18 @@ function ToolDetailView({ toolId, onBack }: { toolId: string; onBack: () => void
                 <VisibilityControl
                   visibility={tool.visibility}
                   onToggle={async (next) => {
+                    if (next === "personal") {
+                      // Never edit the public tool in place -- fork a
+                      // personal draft and jump to editing that instead.
+                      onNavigate((await api.forkTool(tool.id)).id);
+                      return;
+                    }
+                    if (tool.forked_from) {
+                      // Publishing deletes this draft and updates the
+                      // original by id, so follow navigation there.
+                      onNavigate((await api.publishTool(tool.id)).id);
+                      return;
+                    }
                     await api.setToolVisibility(tool.id, next);
                     refresh();
                   }}
@@ -414,6 +444,12 @@ function ToolDetailView({ toolId, onBack }: { toolId: string; onBack: () => void
               </HStack>
               <Button.Flat label="Back" onPress={onBack} />
             </HStack>
+
+            {tool.forked_from && (
+              <Typography.Caption>
+                Personal draft — your changes here are independent of the public tool until you hit "Publish".
+              </Typography.Caption>
+            )}
 
             <EditToolForm
               key={tool.id}
@@ -549,6 +585,7 @@ function CodeToolsPanel() {
           setScreen({ type: "list" });
           refresh();
         }}
+        onNavigate={(toolId) => setScreen({ type: "detail", toolId })}
       />
     );
   }

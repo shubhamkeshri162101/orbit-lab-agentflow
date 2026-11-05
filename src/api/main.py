@@ -84,13 +84,17 @@ def name_conflict(repo: Repository, name: str, exclude_id: str | None = None) ->
     return any(r["name"] == name and r["id"] != exclude_id for r in repo.list())
 
 
-def unique_clone_name(repo: Repository, base_name: str) -> str:
-    name = f"{base_name} (clone)"
+def unique_named(repo: Repository, base_name: str, label: str) -> str:
+    name = f"{base_name} ({label})"
     suffix = 2
     while name_conflict(repo, name):
-        name = f"{base_name} (clone {suffix})"
+        name = f"{base_name} ({label} {suffix})"
         suffix += 1
     return name
+
+
+def unique_clone_name(repo: Repository, base_name: str) -> str:
+    return unique_named(repo, base_name, "clone")
 
 
 if not models_repo.list():
@@ -179,6 +183,7 @@ def update_model(model_id: str, model: ModelCreate) -> dict:
     updated = model.model_dump()
     updated["id"] = model_id
     updated["owner"] = existing.get("owner", "anonymous")
+    updated["forked_from"] = existing.get("forked_from")
     return models_repo.put(updated)
 
 
@@ -188,6 +193,53 @@ def set_model_visibility(model_id: str, body: VisibilityUpdate) -> dict:
     if existing is None:
         raise HTTPException(404, "model not found")
     return models_repo.put({**existing, "visibility": body.visibility})
+
+
+@app.post("/models/{model_id}/fork")
+def fork_model(model_id: str, user: str = Depends(current_user)) -> dict:
+    """'Make personal' on a public model. Never edits the public model in
+    place -- creates an independent personal draft that can later be
+    published back onto the original via /publish."""
+    source = models_repo.get(model_id)
+    if source is None:
+        raise HTTPException(404, "model not found")
+
+    fork = {k: v for k, v in source.items() if k != "id"}
+    fork["name"] = unique_named(models_repo, source["name"], "personal draft")
+    fork["owner"] = user
+    fork["visibility"] = "personal"
+    fork["forked_from"] = model_id
+    return models_repo.put(fork)
+
+
+@app.post("/models/{model_id}/publish")
+def publish_model(model_id: str) -> dict:
+    """Publishes a personal draft's current fields onto the model it was
+    forked from, then removes the now-merged draft. A personal model with no
+    fork origin just becomes public in place."""
+    draft = models_repo.get(model_id)
+    if draft is None:
+        raise HTTPException(404, "model not found")
+
+    origin_id = draft.get("forked_from")
+    if not origin_id:
+        return models_repo.put({**draft, "visibility": "public"})
+
+    origin = models_repo.get(origin_id)
+    if origin is None:
+        raise HTTPException(404, "the original public model no longer exists")
+
+    if draft["provider"] not in PROVIDER_ENV_VARS:
+        raise HTTPException(400, f"provider must be one of {list(PROVIDER_ENV_VARS)}")
+
+    updated = {k: v for k, v in draft.items() if k not in ("id", "forked_from", "name")}
+    updated["id"] = origin_id
+    updated["name"] = origin.get("name")
+    updated["owner"] = origin.get("owner", "anonymous")
+    updated["visibility"] = "public"
+    published = models_repo.put(updated)
+    models_repo.delete(model_id)
+    return published
 
 
 @app.delete("/models/{model_id}")
@@ -245,6 +297,7 @@ def update_tool(tool_id: str, tool: ToolCreate) -> dict:
     updated = tool.model_dump()
     updated["id"] = tool_id
     updated["owner"] = existing.get("owner", "anonymous")
+    updated["forked_from"] = existing.get("forked_from")
     return tools_repo.put(updated)
 
 
@@ -254,6 +307,52 @@ def set_tool_visibility(tool_id: str, body: VisibilityUpdate) -> dict:
     if existing is None:
         raise HTTPException(404, "tool not found")
     return tools_repo.put({**existing, "visibility": body.visibility})
+
+
+@app.post("/tools/{tool_id}/fork")
+def fork_tool(tool_id: str, user: str = Depends(current_user)) -> dict:
+    """'Make personal' on a public tool. Never edits the public tool in place
+    -- creates an independent personal draft that can later be published back
+    onto the original via /publish."""
+    source = tools_repo.get(tool_id)
+    if source is None:
+        raise HTTPException(404, "tool not found")
+
+    fork = {k: v for k, v in source.items() if k != "id"}
+    fork["name"] = unique_named(tools_repo, source["name"], "personal draft")
+    fork["owner"] = user
+    fork["visibility"] = "personal"
+    fork["forked_from"] = tool_id
+    return tools_repo.put(fork)
+
+
+@app.post("/tools/{tool_id}/publish")
+def publish_tool(tool_id: str) -> dict:
+    """Publishes a personal draft's current definition onto the tool it was
+    forked from, then removes the now-merged draft. A personal tool with no
+    fork origin just becomes public in place."""
+    draft = tools_repo.get(tool_id)
+    if draft is None:
+        raise HTTPException(404, "tool not found")
+
+    origin_id = draft.get("forked_from")
+    if not origin_id:
+        return tools_repo.put({**draft, "visibility": "public"})
+
+    origin = tools_repo.get(origin_id)
+    if origin is None:
+        raise HTTPException(404, "the original public tool no longer exists")
+
+    validate_tool(ToolCreate(**{k: v for k, v in draft.items() if k not in ("id", "owner", "forked_from")}))
+
+    updated = {k: v for k, v in draft.items() if k not in ("id", "forked_from", "name")}
+    updated["id"] = origin_id
+    updated["name"] = origin.get("name")
+    updated["owner"] = origin.get("owner", "anonymous")
+    updated["visibility"] = "public"
+    published = tools_repo.put(updated)
+    tools_repo.delete(tool_id)
+    return published
 
 
 @app.delete("/tools/{tool_id}")
@@ -412,6 +511,7 @@ def update_agent(agent_id: str, agent: AgentCreate) -> dict:
     updated["id"] = agent_id
     updated["version"] = bump_patch(existing.get("version", DEFAULT_VERSION))
     updated["owner"] = existing.get("owner", "anonymous")
+    updated["forked_from"] = existing.get("forked_from")
     return agents_repo.put(updated)
 
 
@@ -430,6 +530,7 @@ def overwrite_agent(agent_id: str, agent: AgentCreate) -> dict:
     updated["id"] = agent_id
     updated["version"] = existing.get("version", DEFAULT_VERSION)
     updated["owner"] = existing.get("owner", "anonymous")
+    updated["forked_from"] = existing.get("forked_from")
     return agents_repo.put(updated)
 
 
@@ -452,7 +553,58 @@ def clone_agent(agent_id: str, user: str = Depends(current_user)) -> dict:
     clone["version"] = bump_major(source.get("version", DEFAULT_VERSION))
     clone["owner"] = user
     clone["visibility"] = "personal"
+    clone.pop("forked_from", None)
     return agents_repo.put(clone)
+
+
+@app.post("/agents/{agent_id}/fork")
+def fork_agent(agent_id: str, user: str = Depends(current_user)) -> dict:
+    """'Make personal' on a public agent. Never edits the public agent in
+    place -- creates an independent personal draft that can later be
+    published back onto the original via /publish."""
+    source = agents_repo.get(agent_id)
+    if source is None:
+        raise HTTPException(404, "agent not found")
+
+    fork = {k: v for k, v in source.items() if k != "id"}
+    fork["name"] = unique_named(agents_repo, source["name"], "personal draft")
+    fork["owner"] = user
+    fork["visibility"] = "personal"
+    fork["forked_from"] = agent_id
+    return agents_repo.put(fork)
+
+
+@app.post("/agents/{agent_id}/publish")
+def publish_agent(agent_id: str) -> dict:
+    """Publishes a personal draft's current definition onto the agent it was
+    forked from, bumping that agent's version and snapshotting its history,
+    then removes the now-merged draft. A personal agent with no fork origin
+    just becomes public in place."""
+    draft = agents_repo.get(agent_id)
+    if draft is None:
+        raise HTTPException(404, "agent not found")
+
+    origin_id = draft.get("forked_from")
+    if not origin_id:
+        return agents_repo.put({**draft, "visibility": "public"})
+
+    origin = agents_repo.get(origin_id)
+    if origin is None:
+        raise HTTPException(404, "the original public agent no longer exists")
+
+    if draft["model"] not in allowed_model_names():
+        raise HTTPException(400, f"model must be one of {allowed_model_names()}")
+
+    snapshot_version(agent_versions_repo, "agent_id", origin)
+    updated = {k: v for k, v in draft.items() if k not in ("id", "forked_from", "name")}
+    updated["id"] = origin_id
+    updated["name"] = origin.get("name")
+    updated["version"] = bump_patch(origin.get("version", DEFAULT_VERSION))
+    updated["owner"] = origin.get("owner", "anonymous")
+    updated["visibility"] = "public"
+    published = agents_repo.put(updated)
+    agents_repo.delete(agent_id)
+    return published
 
 
 @app.delete("/agents/{agent_id}")
@@ -488,6 +640,7 @@ def restore_agent_version(agent_id: str, version_id: str) -> dict:
     restored["id"] = agent_id
     restored["owner"] = current.get("owner", "anonymous")
     restored["visibility"] = current.get("visibility", "personal")
+    restored["forked_from"] = current.get("forked_from")
     return agents_repo.put(restored)
 
 
@@ -568,6 +721,7 @@ def update_workflow(workflow_id: str, workflow: WorkflowCreate) -> dict:
     updated["id"] = workflow_id
     updated["version"] = bump_patch(existing.get("version", DEFAULT_VERSION))
     updated["owner"] = existing.get("owner", "anonymous")
+    updated["forked_from"] = existing.get("forked_from")
     return workflows_repo.put(updated)
 
 
@@ -588,6 +742,7 @@ def overwrite_workflow(workflow_id: str, workflow: WorkflowCreate) -> dict:
     updated["id"] = workflow_id
     updated["version"] = existing.get("version", DEFAULT_VERSION)
     updated["owner"] = existing.get("owner", "anonymous")
+    updated["forked_from"] = existing.get("forked_from")
     return workflows_repo.put(updated)
 
 
@@ -610,7 +765,61 @@ def clone_workflow(workflow_id: str, user: str = Depends(current_user)) -> dict:
     clone["version"] = bump_major(source.get("version", DEFAULT_VERSION))
     clone["owner"] = user
     clone["visibility"] = "personal"
+    clone.pop("forked_from", None)
     return workflows_repo.put(clone)
+
+
+@app.post("/workflows/{workflow_id}/fork")
+def fork_workflow(workflow_id: str, user: str = Depends(current_user)) -> dict:
+    """'Make personal' on a public workflow. Never edits the public workflow
+    in place (that would take it down for everyone else using it) -- instead
+    creates an independent personal draft the user can safely edit, which can
+    later be published back onto the original via /publish."""
+    source = workflows_repo.get(workflow_id)
+    if source is None:
+        raise HTTPException(404, "workflow not found")
+
+    fork = {k: v for k, v in source.items() if k != "id"}
+    fork["name"] = unique_named(workflows_repo, source["name"], "personal draft")
+    fork["owner"] = user
+    fork["visibility"] = "personal"
+    fork["forked_from"] = workflow_id
+    return workflows_repo.put(fork)
+
+
+@app.post("/workflows/{workflow_id}/publish")
+def publish_workflow(workflow_id: str) -> dict:
+    """Publishes a personal draft's current steps/start_inputs onto the public
+    workflow it was forked from: snapshots the public workflow's current
+    version, bumps it, and removes the now-merged draft. A personal workflow
+    with no fork origin just becomes public in place -- there's nothing to
+    merge back onto."""
+    draft = workflows_repo.get(workflow_id)
+    if draft is None:
+        raise HTTPException(404, "workflow not found")
+
+    origin_id = draft.get("forked_from")
+    if not origin_id:
+        return workflows_repo.put({**draft, "visibility": "public"})
+
+    origin = workflows_repo.get(origin_id)
+    if origin is None:
+        raise HTTPException(404, "the original public workflow no longer exists")
+
+    missing = [aid for aid in draft["agent_ids"] if not step_exists(aid)]
+    if missing:
+        raise HTTPException(400, f"unknown agent/tool ids: {missing}")
+
+    snapshot_version(workflow_versions_repo, "workflow_id", origin)
+    updated = {k: v for k, v in draft.items() if k not in ("id", "forked_from", "name")}
+    updated["id"] = origin_id
+    updated["name"] = origin.get("name")
+    updated["version"] = bump_patch(origin.get("version", DEFAULT_VERSION))
+    updated["owner"] = origin.get("owner", "anonymous")
+    updated["visibility"] = "public"
+    published = workflows_repo.put(updated)
+    workflows_repo.delete(workflow_id)
+    return published
 
 
 @app.delete("/workflows/{workflow_id}")
@@ -641,6 +850,7 @@ def restore_workflow_version(workflow_id: str, version_id: str) -> dict:
     restored["id"] = workflow_id
     restored["owner"] = current.get("owner", "anonymous")
     restored["visibility"] = current.get("visibility", "personal")
+    restored["forked_from"] = current.get("forked_from")
     return workflows_repo.put(restored)
 
 

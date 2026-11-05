@@ -12,7 +12,7 @@ const SIDE_PANEL_WIDTH = 380;
 function AgentEditSection({ agent, onSaved }: { agent: Agent; onSaved: () => void }) {
   const form = useAgentForm(agent);
   const [saving, setSaving] = useState<"update" | "new-version" | null>(null);
-  const invalid = !form.name || !form.prompt || !form.model;
+  const invalid = !form.name || !form.prompt || !form.model || !!form.outputSchemaError;
 
   async function handleUpdate() {
     setSaving("update");
@@ -98,6 +98,18 @@ export function AgentDetailView({
                 <VisibilityControl
                   visibility={agent.visibility}
                   onToggle={async (next) => {
+                    if (next === "personal") {
+                      // Never edit the public agent in place -- fork a
+                      // personal draft and jump to editing that instead.
+                      onCloned(await api.forkAgent(agent.id));
+                      return;
+                    }
+                    if (agent.forked_from) {
+                      // Publishing deletes this draft and updates the
+                      // original by id, so follow navigation there.
+                      onCloned(await api.publishAgent(agent.id));
+                      return;
+                    }
                     await api.setAgentVisibility(agent.id, next);
                     refresh();
                   }}
@@ -109,6 +121,12 @@ export function AgentDetailView({
                 <Button.Flat label="Back" onPress={onBack} />
               </HStack>
             </HStack>
+
+            {agent.forked_from && (
+              <Typography.Caption>
+                Personal draft — your changes here are independent of the public agent until you hit "Publish".
+              </Typography.Caption>
+            )}
 
             <AgentEditSection key={`${agent.id}-${agent.version}`} agent={agent} onSaved={refresh} />
           </VStack>

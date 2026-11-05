@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -26,6 +26,10 @@ class AgentCreate(BaseModel):
     timeout_seconds: int = Field(default=30, ge=1, le=300)
     variables: list[AgentVariable] = Field(default_factory=list)
     writes: str | None = None
+    # Optional JSON Schema the model's output must conform to. When set, real
+    # calls are constrained via output_config.format so the response is always
+    # valid JSON matching this shape; when unset, output is free-form text.
+    output_schema: dict[str, Any] | None = None
     visibility: Visibility = "personal"
 
 

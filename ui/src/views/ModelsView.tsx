@@ -75,7 +75,18 @@ function EditModelForm({
 
 function ModelCard({ model, onChanged }: { model: ModelInfo; onChanged: () => void }) {
   async function handleToggleVisibility(next: "personal" | "public") {
-    await api.setModelVisibility(model.id, next);
+    if (next === "personal") {
+      // Never edit the public model in place -- fork a personal draft the
+      // user can safely edit (via "Edit model" below), then publish it back.
+      await api.forkModel(model.id);
+      onChanged();
+      return;
+    }
+    if (model.forked_from) {
+      await api.publishModel(model.id);
+    } else {
+      await api.setModelVisibility(model.id, next);
+    }
     onChanged();
   }
 
@@ -136,6 +147,10 @@ function ModelCard({ model, onChanged }: { model: ModelInfo; onChanged: () => vo
         <div>
           <VisibilityToggleButton visibility={model.visibility} onToggle={handleToggleVisibility} />
         </div>
+
+        {model.forked_from && (
+          <Typography.Caption>Personal draft — independent of the public model until published.</Typography.Caption>
+        )}
 
         <VStack gap="0.4rem">
           <VStack gap="0.1rem">

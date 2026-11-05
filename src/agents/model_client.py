@@ -1,8 +1,10 @@
 """Pluggable model-call seam. Swap MockModelClient for a real provider once API keys land."""
 from __future__ import annotations
 
+import json
 import os
 from abc import ABC, abstractmethod
+from typing import Any
 
 import anthropic
 
@@ -55,8 +57,30 @@ class ModelClient(ABC):
         variables: dict[str, str],
         temperature: float = 0.7,
         timeout_seconds: int = 30,
+        output_schema: dict[str, Any] | None = None,
     ) -> str:
         ...
+
+
+def _stub_value_for(schema: dict[str, Any]) -> Any:
+    """A placeholder value matching a JSON Schema node's declared type, used
+    so the mock client's output still conforms to an agent's output_schema
+    even without a live model call."""
+    json_type = schema.get("type", "string")
+    if json_type == "object":
+        return {
+            name: _stub_value_for(prop_schema)
+            for name, prop_schema in schema.get("properties", {}).items()
+        }
+    if json_type == "array":
+        return [_stub_value_for(schema.get("items", {"type": "string"}))]
+    if json_type == "integer":
+        return 0
+    if json_type == "number":
+        return 0.0
+    if json_type == "boolean":
+        return False
+    return "mock value"
 
 
 class MockModelClient(ModelClient):
@@ -69,10 +93,13 @@ class MockModelClient(ModelClient):
         variables: dict[str, str],
         temperature: float = 0.7,
         timeout_seconds: int = 30,
+        output_schema: dict[str, Any] | None = None,
     ) -> str:
         rendered = system_prompt
         for key, value in variables.items():
             rendered = rendered.replace(f"{{{key}}}", str(value))
+        if output_schema:
+            return json.dumps(_stub_value_for(output_schema))
         return f"[mock:{model} temp={temperature} timeout={timeout_seconds}s] {rendered}"
 
 
@@ -101,6 +128,7 @@ class MultiProviderModelClient(ModelClient):
         variables: dict[str, str],
         temperature: float = 0.7,
         timeout_seconds: int = 30,
+        output_schema: dict[str, Any] | None = None,
     ) -> str:
         provider = self._provider_by_model.get(model)
         has_key = provider and os.environ.get(PROVIDER_ENV_VARS.get(provider, ""))
@@ -109,6 +137,10 @@ class MultiProviderModelClient(ModelClient):
             rendered = system_prompt
             for key, value in variables.items():
                 rendered = rendered.replace(f"{{{key}}}", str(value))
+            # When an output_schema is set, output_config.format constrains the
+            # response to valid JSON matching it — the model can't drift from
+            # the agent's declared shape.
+            output_config = {"format": {"type": "json_schema", "schema": output_schema}} if output_schema else None
             try:
                 # The installed anthropic SDK (2.5.0) doesn't expose `temperature`
                 # as a direct messages.create() parameter — the agent's
@@ -118,12 +150,13 @@ class MultiProviderModelClient(ModelClient):
                     max_tokens=1024,
                     timeout=timeout_seconds,
                     messages=[{"role": "user", "content": rendered}],
+                    **({"output_config": output_config} if output_config else {}),
                 )
             except anthropic.APIError as e:
                 raise RuntimeError(f"Anthropic API call failed for model '{model}': {e}") from e
             return "".join(block.text for block in response.content if block.type == "text")
 
-        return self._mock.complete(model, system_prompt, variables, temperature, timeout_seconds)
+        return self._mock.complete(model, system_prompt, variables, temperature, timeout_seconds, output_schema)
 
 
 def get_model_client(model_catalog: list[dict] | None = None) -> ModelClient:

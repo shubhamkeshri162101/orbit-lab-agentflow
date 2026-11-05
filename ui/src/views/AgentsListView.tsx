@@ -63,7 +63,17 @@ function AgentCard({
           <VisibilityToggleButton
             visibility={agent.visibility}
             onToggle={async (next) => {
-              await api.setAgentVisibility(agent.id, next);
+              if (next === "personal") {
+                // Never edit the public agent in place -- fork a personal
+                // draft the user can safely change, then jump straight to it.
+                onOpen(await api.forkAgent(agent.id));
+                return;
+              }
+              if (agent.forked_from) {
+                await api.publishAgent(agent.id);
+              } else {
+                await api.setAgentVisibility(agent.id, next);
+              }
               onChanged();
             }}
           />
