@@ -62,6 +62,22 @@ class ModelClient(ABC):
         ...
 
 
+def _normalize_for_anthropic(schema: dict[str, Any]) -> dict[str, Any]:
+    """Anthropic's structured outputs reject an 'object' schema node that
+    doesn't explicitly set additionalProperties: false — fill it in
+    recursively so agent/workflow authors don't have to know that quirk."""
+    normalized = dict(schema)
+    if normalized.get("type") == "object":
+        normalized.setdefault("additionalProperties", False)
+        if "properties" in normalized:
+            normalized["properties"] = {
+                name: _normalize_for_anthropic(prop_schema) for name, prop_schema in normalized["properties"].items()
+            }
+    if normalized.get("type") == "array" and "items" in normalized:
+        normalized["items"] = _normalize_for_anthropic(normalized["items"])
+    return normalized
+
+
 def _stub_value_for(schema: dict[str, Any]) -> Any:
     """A placeholder value matching a JSON Schema node's declared type, used
     so the mock client's output still conforms to an agent's output_schema
@@ -140,7 +156,11 @@ class MultiProviderModelClient(ModelClient):
             # When an output_schema is set, output_config.format constrains the
             # response to valid JSON matching it — the model can't drift from
             # the agent's declared shape.
-            output_config = {"format": {"type": "json_schema", "schema": output_schema}} if output_schema else None
+            output_config = (
+                {"format": {"type": "json_schema", "schema": _normalize_for_anthropic(output_schema)}}
+                if output_schema
+                else None
+            )
             try:
                 # The installed anthropic SDK (2.5.0) doesn't expose `temperature`
                 # as a direct messages.create() parameter — the agent's

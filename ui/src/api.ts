@@ -65,6 +65,8 @@ export type Workflow = {
   // Set when this is a personal draft created by "Make personal" on a public
   // workflow — the id of the public workflow it can be published back onto.
   forked_from?: string | null;
+  // Optional JSON Schema the end node (last step) must conform to.
+  output_schema?: Record<string, unknown> | null;
 };
 
 export type WorkflowInput = Omit<Workflow, "id" | "version" | "owner">;
@@ -79,6 +81,9 @@ export type RunResult = {
     inputs: Record<string, string>;
     output: Record<string, string>;
   }>;
+  // Present only when the workflow declares an output_schema — empty when
+  // the end node's output matched it.
+  output_schema_errors?: string[];
 };
 
 export type WorkflowExecution = {

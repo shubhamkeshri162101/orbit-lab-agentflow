@@ -113,6 +113,13 @@ export function RunWorkflowPanel({ workflow, onRan }: { workflow: Workflow; onRa
           <Surface rounded outlined padding={12}>
             <OutputFields output={result.output} />
           </Surface>
+          {result.output_schema_errors && result.output_schema_errors.length > 0 && (
+            <Alert
+              level="warning"
+              title="End node output doesn't match the declared output format"
+              subtext={result.output_schema_errors.join("; ")}
+            />
+          )}
           <Typography.Caption>Trace</Typography.Caption>
           {result.trace.map((step, i) => (
             <Surface key={i} rounded outlined padding={12}>
@@ -170,6 +177,14 @@ export function WorkflowExecutionHistoryPanel({
             <Surface rounded outlined padding={12}>
               <OutputFields output={e.result.output} />
             </Surface>
+
+            {e.result.output_schema_errors && e.result.output_schema_errors.length > 0 && (
+              <Alert
+                level="warning"
+                title="End node output doesn't match the declared output format"
+                subtext={e.result.output_schema_errors.join("; ")}
+              />
+            )}
 
             <Typography.Caption>Trace</Typography.Caption>
             {e.result.trace.map((step, i) => (

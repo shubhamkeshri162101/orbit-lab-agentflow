@@ -27,6 +27,7 @@ function WorkflowEditSection({ workflow, onSaved }: { workflow: Workflow; onSave
         name: builder.name,
         agent_ids: result,
         start_inputs: builder.startInputs.filter((si) => si.name.trim()),
+        output_schema: builder.parsedOutputSchema,
         visibility: workflow.visibility,
       });
       onSaved();
@@ -48,6 +49,7 @@ function WorkflowEditSection({ workflow, onSaved }: { workflow: Workflow; onSave
         name: builder.name,
         agent_ids: result,
         start_inputs: builder.startInputs.filter((si) => si.name.trim()),
+        output_schema: builder.parsedOutputSchema,
         visibility: workflow.visibility,
       });
       onSaved();
@@ -65,12 +67,12 @@ function WorkflowEditSection({ workflow, onSaved }: { workflow: Workflow; onSave
           <Button.Secondary
             label={saving === "update" ? "Updating…" : `Update v${workflow.version}`}
             onPress={handleUpdate}
-            disabled={saving !== null || !builder.name}
+            disabled={saving !== null || !builder.name || !!builder.outputSchemaError}
           />
           <Button.Primary
             label={saving === "new-version" ? "Saving…" : "Save (new version)"}
             onPress={handleSaveNewVersion}
-            disabled={saving !== null || !builder.name}
+            disabled={saving !== null || !builder.name || !!builder.outputSchemaError}
           />
         </HStack>
       )}

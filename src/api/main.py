@@ -879,7 +879,12 @@ def run(workflow_id: str, request: RunRequest) -> dict:
 
     try:
         used_models = {s["model"] for s in steps_in_order if s.get("_kind") != "tool"}
-        result = run_workflow(steps_in_order, request.input, get_model_client(catalog_for(used_models)))
+        result = run_workflow(
+            steps_in_order,
+            request.input,
+            get_model_client(catalog_for(used_models)),
+            output_schema=workflow.get("output_schema"),
+        )
     except MissingRequiredStateError as e:
         raise HTTPException(400, str(e)) from e
     except RuntimeError as e:
