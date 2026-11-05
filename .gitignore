@@ -1,0 +1,16 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Node / frontend
+ui/node_modules/
+ui/dist/
+ui/tsconfig.tsbuildinfo
+
+# Local runtime data (TinyDB) — seeded fresh on first run
+data/db.json
+
+# Editor / OS
+.DS_Store
