@@ -68,7 +68,17 @@ function WorkflowCard({
           <VisibilityToggleButton
             visibility={workflow.visibility}
             onToggle={async (next) => {
-              await api.setWorkflowVisibility(workflow.id, next);
+              if (next === "personal") {
+                // Never edit the public workflow in place -- fork a personal
+                // draft the user can safely change, then jump straight to it.
+                onOpen(await api.forkWorkflow(workflow.id));
+                return;
+              }
+              if (workflow.forked_from) {
+                await api.publishWorkflow(workflow.id);
+              } else {
+                await api.setWorkflowVisibility(workflow.id, next);
+              }
               onChanged();
             }}
           />

@@ -35,7 +35,7 @@ export function AgentEditorView({ onDone, onCancel }: { onDone: () => void; onCa
             <Button.Primary
               label={saving ? "Saving…" : "Create agent"}
               onPress={handleSubmit}
-              disabled={!form.name || !form.prompt || !form.model || saving}
+              disabled={!form.name || !form.prompt || !form.model || !!form.outputSchemaError || saving}
             />
           </HStack>
         </VStack>

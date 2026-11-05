@@ -1,6 +1,7 @@
 import { Alert, Button, InputGroup, Select, Surface, Typography } from "@oaknorthbank/components";
 import { useEffect, useState } from "react";
 import { HStack, VStack } from "../components/Stacks";
+import { OutputFields } from "../components/MarkdownOutput";
 import { api, type Agent, type AgentExecution, type AgentRunResult, type AgentVersion } from "../api";
 
 function compareVersionsDesc(a: string, b: string): number {
@@ -62,7 +63,7 @@ export function TestAgentPanel({ agent, onRan }: { agent: Agent; onRan: () => vo
           <VStack gap="0.25rem">
             <Typography.Caption>Output</Typography.Caption>
             <Surface rounded outlined padding={12}>
-              <Typography.Body small>{JSON.stringify(result.output, null, 2)}</Typography.Body>
+              <OutputFields output={result.output} />
             </Surface>
           </VStack>
         )}
@@ -155,7 +156,7 @@ export function AgentExecutionHistoryPanel({
 
             <Typography.Caption>Output</Typography.Caption>
             <Surface rounded outlined padding={12}>
-              <Typography.Body small>{JSON.stringify(e.result.output, null, 2)}</Typography.Body>
+              <OutputFields output={e.result.output} />
             </Surface>
           </VStack>
         </Surface>

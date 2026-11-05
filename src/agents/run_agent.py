@@ -39,6 +39,7 @@ def run_agent(agent: dict[str, Any], shared_state: dict[str, Any], model_client:
         variables=inputs,
         temperature=agent.get("temperature", 0.7),
         timeout_seconds=agent.get("timeout_seconds", 30),
+        output_schema=agent.get("output_schema"),
     )
 
     writes_key = agent.get("writes") or agent["name"]

@@ -1,6 +1,7 @@
 import { Alert, Button, InputGroup, Select, Surface, Typography } from "@oaknorthbank/components";
 import { useEffect, useState } from "react";
 import { HStack, VStack } from "../components/Stacks";
+import { OutputFields } from "../components/MarkdownOutput";
 import { api, type RunResult, type Workflow, type WorkflowExecution, type WorkflowVersion } from "../api";
 
 function compareVersionsDesc(a: string, b: string): number {
@@ -110,17 +111,17 @@ export function RunWorkflowPanel({ workflow, onRan }: { workflow: Workflow; onRa
         <VStack gap="0.5rem">
           <Typography.Caption>Output</Typography.Caption>
           <Surface rounded outlined padding={12}>
-            <Typography.Body small>{JSON.stringify(result.output, null, 2)}</Typography.Body>
+            <OutputFields output={result.output} />
           </Surface>
           <Typography.Caption>Trace</Typography.Caption>
           {result.trace.map((step, i) => (
             <Surface key={i} rounded outlined padding={12}>
-              <VStack gap="0.25rem">
+              <VStack gap="0.5rem">
                 <Typography.Body fontWeight="semibold" small>
                   {i + 1}. {step.agent} ({step.model})
                 </Typography.Body>
                 <Typography.Caption>inputs: {JSON.stringify(step.inputs)}</Typography.Caption>
-                <Typography.Caption>output: {JSON.stringify(step.output)}</Typography.Caption>
+                <OutputFields output={step.output} />
               </VStack>
             </Surface>
           ))}
@@ -167,18 +168,18 @@ export function WorkflowExecutionHistoryPanel({
 
             <Typography.Caption>Output</Typography.Caption>
             <Surface rounded outlined padding={12}>
-              <Typography.Body small>{JSON.stringify(e.result.output, null, 2)}</Typography.Body>
+              <OutputFields output={e.result.output} />
             </Surface>
 
             <Typography.Caption>Trace</Typography.Caption>
             {e.result.trace.map((step, i) => (
               <Surface key={i} rounded outlined padding={12}>
-                <VStack gap="0.25rem">
+                <VStack gap="0.5rem">
                   <Typography.Body fontWeight="semibold" small>
                     {i + 1}. {step.agent} ({step.model})
                   </Typography.Body>
                   <Typography.Caption>inputs: {JSON.stringify(step.inputs)}</Typography.Caption>
-                  <Typography.Caption>output: {JSON.stringify(step.output)}</Typography.Caption>
+                  <OutputFields output={step.output} />
                 </VStack>
               </Surface>
             ))}

@@ -10,7 +10,20 @@ export function useAgentForm(agent?: Agent) {
   const [writes, setWrites] = useState(agent?.writes ?? "");
   const [temperature, setTemperature] = useState(agent?.temperature ?? 0.7);
   const [timeoutSeconds, setTimeoutSeconds] = useState(agent?.timeout_seconds ?? 30);
+  const [outputSchemaText, setOutputSchemaText] = useState(
+    agent?.output_schema ? JSON.stringify(agent.output_schema, null, 2) : ""
+  );
   const { detected, config, update, variables } = useVariableConfig(prompt, agent?.variables ?? []);
+
+  let outputSchemaError = "";
+  let parsedOutputSchema: Record<string, unknown> | null = null;
+  if (outputSchemaText.trim()) {
+    try {
+      parsedOutputSchema = JSON.parse(outputSchemaText);
+    } catch {
+      outputSchemaError = "Output format must be valid JSON (a JSON Schema object).";
+    }
+  }
 
   useEffect(() => {
     api.listModels().then((m) => {
@@ -28,7 +41,8 @@ export function useAgentForm(agent?: Agent) {
       (writes || null) !== (agent.writes ?? null) ||
       temperature !== agent.temperature ||
       Math.round(timeoutSeconds) !== agent.timeout_seconds ||
-      JSON.stringify(variables) !== JSON.stringify(agent.variables)
+      JSON.stringify(variables) !== JSON.stringify(agent.variables) ||
+      outputSchemaText.trim() !== (agent.output_schema ? JSON.stringify(agent.output_schema, null, 2) : "")
     : true;
 
   function buildPayload(): AgentInput {
@@ -40,6 +54,7 @@ export function useAgentForm(agent?: Agent) {
       timeout_seconds: Math.round(timeoutSeconds),
       variables,
       writes: writes || null,
+      output_schema: parsedOutputSchema,
       visibility: agent?.visibility ?? "personal",
     };
   }
@@ -58,6 +73,9 @@ export function useAgentForm(agent?: Agent) {
     setTemperature,
     timeoutSeconds,
     setTimeoutSeconds,
+    outputSchemaText,
+    setOutputSchemaText,
+    outputSchemaError,
     detected,
     config,
     update,

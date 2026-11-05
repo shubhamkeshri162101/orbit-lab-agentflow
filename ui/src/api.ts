@@ -22,8 +22,15 @@ export type Agent = {
   timeout_seconds: number;
   variables: AgentVariable[];
   writes?: string | null;
+  // Optional JSON Schema the model's output must conform to. When set, real
+  // calls are constrained to return valid JSON matching this shape instead of
+  // free-form text.
+  output_schema?: Record<string, unknown> | null;
   owner: string;
   visibility: Visibility;
+  // Set when this is a personal draft created by "Make personal" on a public
+  // agent — the id of the public agent it can be published back onto.
+  forked_from?: string | null;
 };
 
 export type AgentInput = Omit<Agent, "id" | "version" | "owner">;
@@ -55,6 +62,9 @@ export type Workflow = {
   start_inputs: StartInput[];
   owner: string;
   visibility: Visibility;
+  // Set when this is a personal draft created by "Make personal" on a public
+  // workflow — the id of the public workflow it can be published back onto.
+  forked_from?: string | null;
 };
 
 export type WorkflowInput = Omit<Workflow, "id" | "version" | "owner">;
@@ -102,6 +112,9 @@ export type Tool = {
   timeout_seconds: number;
   owner: string;
   visibility: Visibility;
+  // Set when this is a personal draft created by "Make personal" on a public
+  // tool — the id of the public tool it can be published back onto.
+  forked_from?: string | null;
 };
 
 export type ToolInput = Omit<Tool, "id" | "owner">;
@@ -147,6 +160,9 @@ export type ModelInfo = {
   use_case: string;
   owner: string;
   visibility: Visibility;
+  // Set when this is a personal draft created by "Make personal" on a public
+  // model — the id of the public model it can be published back onto.
+  forked_from?: string | null;
 };
 
 export type ModelInput = Omit<ModelInfo, "id" | "owner">;
@@ -182,6 +198,8 @@ export const api = {
   deleteModel: (modelId: string) => request<{ deleted: string }>(`/models/${modelId}`, { method: "DELETE" }),
   setModelVisibility: (modelId: string, visibility: Visibility) =>
     setVisibility(`/models/${modelId}/visibility`, visibility),
+  forkModel: (modelId: string) => request<ModelInfo>(`/models/${modelId}/fork`, { method: "POST" }),
+  publishModel: (modelId: string) => request<ModelInfo>(`/models/${modelId}/publish`, { method: "POST" }),
   listTools: () => request<Tool[]>("/tools"),
   getTool: (toolId: string) => request<Tool>(`/tools/${toolId}`),
   createTool: (tool: ToolInput) => request<Tool>("/tools", { method: "POST", body: JSON.stringify(tool) }),
@@ -190,6 +208,8 @@ export const api = {
   deleteTool: (toolId: string) => request<{ deleted: string }>(`/tools/${toolId}`, { method: "DELETE" }),
   setToolVisibility: (toolId: string, visibility: Visibility) =>
     setVisibility(`/tools/${toolId}/visibility`, visibility),
+  forkTool: (toolId: string) => request<Tool>(`/tools/${toolId}/fork`, { method: "POST" }),
+  publishTool: (toolId: string) => request<Tool>(`/tools/${toolId}/publish`, { method: "POST" }),
   listToolExecutions: (toolId: string) => request<ToolExecution[]>(`/tools/${toolId}/executions`),
   runTool: (toolId: string, input: Record<string, string>) =>
     request<AgentRunResult>(`/tools/${toolId}/run`, { method: "POST", body: JSON.stringify({ input }) }),
@@ -213,6 +233,8 @@ export const api = {
   deleteAgent: (agentId: string) => request<{ deleted: string }>(`/agents/${agentId}`, { method: "DELETE" }),
   setAgentVisibility: (agentId: string, visibility: Visibility) =>
     setVisibility(`/agents/${agentId}/visibility`, visibility),
+  forkAgent: (agentId: string) => request<Agent>(`/agents/${agentId}/fork`, { method: "POST" }),
+  publishAgent: (agentId: string) => request<Agent>(`/agents/${agentId}/publish`, { method: "POST" }),
   cloneAgent: (agentId: string) => request<Agent>(`/agents/${agentId}/clone`, { method: "POST" }),
   listAgentVersions: (agentId: string) => request<AgentVersion[]>(`/agents/${agentId}/versions`),
   restoreAgentVersion: (agentId: string, versionId: string) =>
@@ -231,6 +253,8 @@ export const api = {
   setWorkflowVisibility: (workflowId: string, visibility: Visibility) =>
     setVisibility(`/workflows/${workflowId}/visibility`, visibility),
   cloneWorkflow: (workflowId: string) => request<Workflow>(`/workflows/${workflowId}/clone`, { method: "POST" }),
+  forkWorkflow: (workflowId: string) => request<Workflow>(`/workflows/${workflowId}/fork`, { method: "POST" }),
+  publishWorkflow: (workflowId: string) => request<Workflow>(`/workflows/${workflowId}/publish`, { method: "POST" }),
   listWorkflowVersions: (workflowId: string) =>
     request<WorkflowVersion[]>(`/workflows/${workflowId}/versions`),
   restoreWorkflowVersion: (workflowId: string, versionId: string) =>

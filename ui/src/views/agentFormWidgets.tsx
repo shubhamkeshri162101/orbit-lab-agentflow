@@ -183,6 +183,20 @@ export function AgentFormFields({ form }: { form: ReturnType<typeof useAgentForm
         description="The key this agent's output is saved under for later agents in a workflow. Defaults to the agent's name."
         inputProps={{ value: form.writes, onChange: form.setWrites, accessibilityLabel: "Writes" }}
       />
+
+      <InputGroup
+        type="TextArea"
+        label="Output format (JSON Schema, optional)"
+        description='Leave blank for free-form text output. When set, every real model call is constrained to return valid JSON matching this schema — e.g. {"type":"object","properties":{"summary":{"type":"string"}},"required":["summary"]}'
+        inputProps={{
+          value: form.outputSchemaText,
+          placeholder: '{"type":"object","properties":{...},"required":[...]}',
+          rows: 4,
+          onChange: form.setOutputSchemaText,
+          accessibilityLabel: "Output format JSON schema",
+        }}
+      />
+      {form.outputSchemaError && <Typography.Caption colour="errorText">{form.outputSchemaError}</Typography.Caption>}
     </VStack>
   );
 }

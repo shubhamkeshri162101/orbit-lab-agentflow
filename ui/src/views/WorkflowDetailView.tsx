@@ -121,6 +121,18 @@ export function WorkflowDetailView({
                 <VisibilityControl
                   visibility={workflow.visibility}
                   onToggle={async (next) => {
+                    if (next === "personal") {
+                      // Never edit the public workflow in place -- fork a
+                      // personal draft and jump to editing that instead.
+                      onCloned(await api.forkWorkflow(workflow.id));
+                      return;
+                    }
+                    if (workflow.forked_from) {
+                      // Publishing deletes this draft and updates the
+                      // original by id, so follow navigation there.
+                      onCloned(await api.publishWorkflow(workflow.id));
+                      return;
+                    }
                     await api.setWorkflowVisibility(workflow.id, next);
                     refresh();
                   }}
@@ -132,6 +144,13 @@ export function WorkflowDetailView({
                 <Button.Flat label="Back" onPress={onBack} />
               </HStack>
             </HStack>
+
+            {workflow.forked_from && (
+              <Typography.Caption>
+                Personal draft — your changes here are independent of the public workflow until you hit
+                "Publish".
+              </Typography.Caption>
+            )}
 
             <WorkflowEditSection key={`${workflow.id}-${workflow.version}`} workflow={workflow} onSaved={refresh} />
           </VStack>
