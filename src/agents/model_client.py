@@ -58,6 +58,7 @@ class ModelClient(ABC):
         temperature: float = 0.7,
         timeout_seconds: int = 30,
         output_schema: dict[str, Any] | None = None,
+        max_output_tokens: int = 1024,
     ) -> str:
         ...
 
@@ -110,13 +111,14 @@ class MockModelClient(ModelClient):
         temperature: float = 0.7,
         timeout_seconds: int = 30,
         output_schema: dict[str, Any] | None = None,
+        max_output_tokens: int = 1024,
     ) -> str:
         rendered = system_prompt
         for key, value in variables.items():
             rendered = rendered.replace(f"{{{key}}}", str(value))
         if output_schema:
             return json.dumps(_stub_value_for(output_schema))
-        return f"[mock:{model} temp={temperature} timeout={timeout_seconds}s] {rendered}"
+        return f"[mock:{model} temp={temperature} timeout={timeout_seconds}s max_tokens={max_output_tokens}] {rendered}"
 
 
 class MultiProviderModelClient(ModelClient):
@@ -145,6 +147,7 @@ class MultiProviderModelClient(ModelClient):
         temperature: float = 0.7,
         timeout_seconds: int = 30,
         output_schema: dict[str, Any] | None = None,
+        max_output_tokens: int = 1024,
     ) -> str:
         provider = self._provider_by_model.get(model)
         has_key = provider and os.environ.get(PROVIDER_ENV_VARS.get(provider, ""))
@@ -167,7 +170,7 @@ class MultiProviderModelClient(ModelClient):
                 # temperature setting has no effect on real calls for now.
                 response = self._anthropic().messages.create(
                     model=model,
-                    max_tokens=1024,
+                    max_tokens=max_output_tokens,
                     timeout=timeout_seconds,
                     messages=[{"role": "user", "content": rendered}],
                     **({"output_config": output_config} if output_config else {}),
@@ -176,7 +179,9 @@ class MultiProviderModelClient(ModelClient):
                 raise RuntimeError(f"Anthropic API call failed for model '{model}': {e}") from e
             return "".join(block.text for block in response.content if block.type == "text")
 
-        return self._mock.complete(model, system_prompt, variables, temperature, timeout_seconds, output_schema)
+        return self._mock.complete(
+            model, system_prompt, variables, temperature, timeout_seconds, output_schema, max_output_tokens
+        )
 
 
 def get_model_client(model_catalog: list[dict] | None = None) -> ModelClient:

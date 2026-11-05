@@ -141,7 +141,8 @@ export function AgentExecutionHistoryPanel({
           <VStack gap="0.5rem">
             <Typography.Caption>{new Date(e.executed_at).toLocaleString()}</Typography.Caption>
             <Typography.Body small secondary>
-              {e.model} · temp {(e.temperature ?? 0.7).toFixed(2)} · timeout {e.timeout_seconds ?? 30}s
+              {e.model} · temp {(e.temperature ?? 0.7).toFixed(2)} · timeout {e.timeout_seconds ?? 30}s · max{" "}
+              {e.max_output_tokens ?? 1024} tok
             </Typography.Body>
 
             <Typography.Caption>Prompt used</Typography.Caption>

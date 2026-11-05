@@ -673,6 +673,7 @@ def run_single_agent(agent_id: str, request: RunRequest) -> dict:
             "model": agent["model"],
             "temperature": agent.get("temperature", 0.7),
             "timeout_seconds": agent.get("timeout_seconds", 30),
+            "max_output_tokens": agent.get("max_output_tokens", 1024),
         },
     )
     return result
