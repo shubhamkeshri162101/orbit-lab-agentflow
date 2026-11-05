@@ -155,7 +155,10 @@ export function WorkflowExecutionHistoryPanel({
       {sorted.map((e) => (
         <Surface key={e.id} rounded outlined padding={16}>
           <VStack gap="0.5rem">
-            <Typography.Caption>{new Date(e.executed_at).toLocaleString()}</Typography.Caption>
+            <Typography.Caption>
+              {new Date(e.executed_at).toLocaleString()}
+              {e.workflow_version ? ` — ran v${e.workflow_version}` : ""}
+            </Typography.Caption>
 
             <Typography.Caption>Input</Typography.Caption>
             <Surface rounded outlined padding={12}>
