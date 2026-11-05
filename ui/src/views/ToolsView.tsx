@@ -701,14 +701,12 @@ function McpServerCard({
           <VStack gap="0.4rem">
             <HStack gap="0.5rem" alignItems="center">
               <Typography.Body fontWeight="semibold">{server.name}</Typography.Body>
-              <VisibilityControl
-                visibility={server.visibility}
-                onToggle={async (next) => {
-                  await api.setMcpServerVisibility(server.id, next);
-                  onChanged();
-                }}
-              />
+              <VisibilityBadge visibility={server.visibility} />
             </HStack>
+            <Typography.Caption>
+              MCP servers are personal-only — they can run local commands and carry credentials, so they're never
+              shared.
+            </Typography.Caption>
             <Typography.Caption>
               {server.command} {server.args.join(" ")}
             </Typography.Caption>
