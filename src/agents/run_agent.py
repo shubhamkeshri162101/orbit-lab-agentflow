@@ -40,6 +40,7 @@ def run_agent(agent: dict[str, Any], shared_state: dict[str, Any], model_client:
         temperature=agent.get("temperature", 0.7),
         timeout_seconds=agent.get("timeout_seconds", 30),
         output_schema=agent.get("output_schema"),
+        max_output_tokens=agent.get("max_output_tokens", 1024),
     )
 
     writes_key = agent.get("writes") or agent["name"]

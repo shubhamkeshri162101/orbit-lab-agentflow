@@ -24,6 +24,9 @@ class AgentCreate(BaseModel):
     model: str
     temperature: float = Field(default=0.7, ge=0.0, le=1.0)
     timeout_seconds: int = Field(default=30, ge=1, le=300)
+    # Caps real model calls' max_tokens -- keeps an unexpectedly verbose
+    # response (and its cost) bounded instead of open-ended.
+    max_output_tokens: int = Field(default=1024, ge=1, le=10000)
     variables: list[AgentVariable] = Field(default_factory=list)
     writes: str | None = None
     # Optional JSON Schema the model's output must conform to. When set, real

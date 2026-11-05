@@ -1,4 +1,4 @@
-import { Button, IconButton, InputGroup, Label, Select, Surface, Typography } from "@oaknorthbank/components";
+import { Accordion, Button, Divider, IconButton, InputGroup, Label, Select, Surface, Typography } from "@oaknorthbank/components";
 import IconTrash from "@oaknorthbank/graphics/icons/IconTrash";
 import { Background, Controls, Handle, Position, ReactFlow, type NodeProps } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
@@ -86,8 +86,19 @@ export function WorkflowBuilderFields({ builder }: { builder: ReturnType<typeof 
   const addableAgents = [...builder.agents].reverse().filter((a) => !onCanvas.has(a.id));
   const addableTools = [...builder.tools].reverse().filter((t) => !onCanvas.has(t.id));
 
+  const startInputsSummary =
+    builder.startInputs.length === 0
+      ? "None set"
+      : builder.startInputs.map((si) => si.name).filter(Boolean).join(", ") || "None set";
+
+  const outputSchemaSummary = builder.outputSchemaError
+    ? "Invalid JSON"
+    : builder.outputSchemaText.trim()
+      ? "JSON Schema defined"
+      : "Free-form (not set)";
+
   return (
-    <VStack gap="1rem">
+    <VStack gap="1.5rem">
       <InputGroup
         type="Text"
         label="Name"
@@ -95,128 +106,142 @@ export function WorkflowBuilderFields({ builder }: { builder: ReturnType<typeof 
       />
 
       <VStack gap="0.5rem">
-        <Typography.Body fontWeight="semibold">Start inputs</Typography.Body>
-        <Typography.Caption>
-          Embed the input keys (and optional sample values) this workflow starts with — they show on the Start
-          node and prefill "Run this workflow".
-        </Typography.Caption>
-        {builder.startInputs.map((si, i) => (
-          <HStack key={i} gap="0.5rem" alignItems="center">
-            <div style={{ width: 240 }}>
-              <InputGroup
-                type="Text"
-                label="Key"
-                inputProps={{
-                  value: si.name,
-                  onChange: (v) => builder.updateStartInput(i, "name", v),
-                  accessibilityLabel: "Start input key",
-                }}
-              />
+        <Accordion.Single title="Start inputs" subtitle={startInputsSummary} initiallyExpanded={builder.startInputs.length > 0}>
+          <VStack gap="0.75rem">
+            <Typography.Caption>
+              Embed the input keys (and optional sample values) this workflow starts with — they show on the Start
+              node and prefill "Run this workflow".
+            </Typography.Caption>
+            {builder.startInputs.map((si, i) => (
+              <HStack key={i} gap="0.5rem" alignItems="center">
+                <div style={{ width: 240 }}>
+                  <InputGroup
+                    type="Text"
+                    label="Key"
+                    inputProps={{
+                      value: si.name,
+                      onChange: (v) => builder.updateStartInput(i, "name", v),
+                      accessibilityLabel: "Start input key",
+                    }}
+                  />
+                </div>
+                <div style={{ width: 240 }}>
+                  <InputGroup
+                    type="Text"
+                    label="Value (optional)"
+                    inputProps={{
+                      value: si.value,
+                      onChange: (v) => builder.updateStartInput(i, "value", v),
+                      accessibilityLabel: "Start input value",
+                    }}
+                  />
+                </div>
+                <IconButton.Outlined
+                  icon={IconTrash}
+                  label="Remove start input"
+                  destructive
+                  onPress={() => builder.removeStartInput(i)}
+                />
+              </HStack>
+            ))}
+            <div>
+              <Button.Secondary label="+ Add start input" onPress={builder.addStartInput} />
             </div>
-            <div style={{ width: 240 }}>
-              <InputGroup
-                type="Text"
-                label="Value (optional)"
-                inputProps={{
-                  value: si.value,
-                  onChange: (v) => builder.updateStartInput(i, "value", v),
-                  accessibilityLabel: "Start input value",
-                }}
-              />
-            </div>
-            <IconButton.Outlined
-              icon={IconTrash}
-              label="Remove start input"
-              destructive
-              onPress={() => builder.removeStartInput(i)}
+          </VStack>
+        </Accordion.Single>
+
+        <Accordion.Single
+          title="Output format"
+          subtitle={outputSchemaSummary}
+          initiallyExpanded={builder.outputSchemaText.trim().length > 0}
+        >
+          <VStack gap="0.5rem">
+            <InputGroup
+              type="TextArea"
+              label="Output format (JSON Schema, optional)"
+              description={
+                'Leave blank for free-form output. When set, the end node (the last step before End) is constrained ' +
+                'to return JSON matching this schema if it doesn\'t already declare its own — e.g. ' +
+                '{"type":"object","properties":{"summary":{"type":"string"}},"required":["summary"]}'
+              }
+              inputProps={{
+                value: builder.outputSchemaText,
+                placeholder: '{"type":"object","properties":{...},"required":[...]}',
+                rows: 4,
+                onChange: builder.setOutputSchemaText,
+                accessibilityLabel: "Workflow output format JSON schema",
+              }}
             />
-          </HStack>
-        ))}
-        <div>
-          <Button.Secondary label="+ Add start input" onPress={builder.addStartInput} />
-        </div>
+            {builder.outputSchemaError && (
+              <Typography.Caption colour="errorText">{builder.outputSchemaError}</Typography.Caption>
+            )}
+          </VStack>
+        </Accordion.Single>
       </VStack>
 
-      <VStack gap="0.5rem">
-        <InputGroup
-          type="TextArea"
-          label="Output format (JSON Schema, optional)"
-          description={
-            'Leave blank for free-form output. When set, the end node (the last step before End) is constrained ' +
-            'to return JSON matching this schema if it doesn\'t already declare its own — e.g. ' +
-            '{"type":"object","properties":{"summary":{"type":"string"}},"required":["summary"]}'
-          }
-          inputProps={{
-            value: builder.outputSchemaText,
-            placeholder: '{"type":"object","properties":{...},"required":[...]}',
-            rows: 4,
-            onChange: builder.setOutputSchemaText,
-            accessibilityLabel: "Workflow output format JSON schema",
-          }}
-        />
-        {builder.outputSchemaError && (
-          <Typography.Caption colour="errorText">{builder.outputSchemaError}</Typography.Caption>
-        )}
+      <Divider space={0} />
+
+      <VStack gap="0.75rem">
+        <Typography.Body fontWeight="semibold">Canvas</Typography.Body>
+        <HStack gap="1rem" style={{ flexWrap: "wrap" }}>
+          <div style={{ width: 280 }}>
+            <Select
+              label="Add agent to canvas"
+              labelHardOverride="+ Add agent"
+              searchable
+              dropdownWidth={320}
+              disabled={addableAgents.length === 0}
+              options={addableAgents.map((a) => ({ value: a.id, label: a.name, helper: `v${a.version}` }))}
+              onChange={(option) => {
+                const agent = builder.agents.find((a) => a.id === option.value);
+                if (agent) builder.addAgentNode(agent);
+              }}
+            />
+            {addableAgents.length === 0 && (
+              <Typography.Caption>
+                {builder.agents.length === 0 ? "No agents yet — create one in the Agents tab." : "All agents are on the canvas."}
+              </Typography.Caption>
+            )}
+          </div>
+
+          <div style={{ width: 280 }}>
+            <Select
+              label="Add tool to canvas"
+              labelHardOverride="+ Add tool"
+              searchable
+              dropdownWidth={320}
+              disabled={addableTools.length === 0}
+              options={addableTools.map((t) => ({ value: t.id, label: t.name }))}
+              onChange={(option) => {
+                const tool = builder.tools.find((t) => t.id === option.value);
+                if (tool) builder.addToolNode(tool);
+              }}
+            />
+            {addableTools.length === 0 && (
+              <Typography.Caption>
+                {builder.tools.length === 0 ? "No tools yet — create one in the Tools tab." : "All tools are on the canvas."}
+              </Typography.Caption>
+            )}
+          </div>
+        </HStack>
+
+        <Surface rounded outlined clipped>
+          <div style={{ height: 440 }}>
+            <ReactFlow
+              nodes={builder.nodes}
+              edges={builder.edges}
+              onNodesChange={builder.onNodesChange}
+              onEdgesChange={builder.onEdgesChange}
+              onConnect={builder.onConnect}
+              nodeTypes={nodeTypes}
+              fitView
+            >
+              <Background />
+              <Controls />
+            </ReactFlow>
+          </div>
+        </Surface>
       </VStack>
-
-      <HStack gap="1rem" style={{ flexWrap: "wrap" }}>
-        <div style={{ width: 280 }}>
-          <Select
-            label="Add agent to canvas"
-            labelHardOverride="+ Add agent"
-            searchable
-            dropdownWidth={320}
-            disabled={addableAgents.length === 0}
-            options={addableAgents.map((a) => ({ value: a.id, label: a.name, helper: `v${a.version}` }))}
-            onChange={(option) => {
-              const agent = builder.agents.find((a) => a.id === option.value);
-              if (agent) builder.addAgentNode(agent);
-            }}
-          />
-          {addableAgents.length === 0 && (
-            <Typography.Caption>
-              {builder.agents.length === 0 ? "No agents yet — create one in the Agents tab." : "All agents are on the canvas."}
-            </Typography.Caption>
-          )}
-        </div>
-
-        <div style={{ width: 280 }}>
-          <Select
-            label="Add tool to canvas"
-            labelHardOverride="+ Add tool"
-            searchable
-            dropdownWidth={320}
-            disabled={addableTools.length === 0}
-            options={addableTools.map((t) => ({ value: t.id, label: t.name }))}
-            onChange={(option) => {
-              const tool = builder.tools.find((t) => t.id === option.value);
-              if (tool) builder.addToolNode(tool);
-            }}
-          />
-          {addableTools.length === 0 && (
-            <Typography.Caption>
-              {builder.tools.length === 0 ? "No tools yet — create one in the Tools tab." : "All tools are on the canvas."}
-            </Typography.Caption>
-          )}
-        </div>
-      </HStack>
-
-      <Surface rounded outlined clipped>
-        <div style={{ height: 400 }}>
-          <ReactFlow
-            nodes={builder.nodes}
-            edges={builder.edges}
-            onNodesChange={builder.onNodesChange}
-            onEdgesChange={builder.onEdgesChange}
-            onConnect={builder.onConnect}
-            nodeTypes={nodeTypes}
-            fitView
-          >
-            <Background />
-            <Controls />
-          </ReactFlow>
-        </div>
-      </Surface>
     </VStack>
   );
 }

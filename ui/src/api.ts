@@ -20,6 +20,9 @@ export type Agent = {
   model: string;
   temperature: number;
   timeout_seconds: number;
+  // Caps a real call's max_tokens so an unexpectedly verbose response (and
+  // its cost) stays bounded.
+  max_output_tokens: number;
   variables: AgentVariable[];
   writes?: string | null;
   // Optional JSON Schema the model's output must conform to. When set, real
@@ -47,6 +50,7 @@ export type AgentExecution = {
   model: string;
   temperature: number;
   timeout_seconds: number;
+  max_output_tokens?: number;
 };
 
 export type StartInput = {

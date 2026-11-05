@@ -10,6 +10,7 @@ export function useAgentForm(agent?: Agent) {
   const [writes, setWrites] = useState(agent?.writes ?? "");
   const [temperature, setTemperature] = useState(agent?.temperature ?? 0.7);
   const [timeoutSeconds, setTimeoutSeconds] = useState(agent?.timeout_seconds ?? 30);
+  const [maxOutputTokens, setMaxOutputTokens] = useState(agent?.max_output_tokens ?? 1024);
   const [outputSchemaText, setOutputSchemaText] = useState(
     agent?.output_schema ? JSON.stringify(agent.output_schema, null, 2) : ""
   );
@@ -41,6 +42,7 @@ export function useAgentForm(agent?: Agent) {
       (writes || null) !== (agent.writes ?? null) ||
       temperature !== agent.temperature ||
       Math.round(timeoutSeconds) !== agent.timeout_seconds ||
+      Math.round(maxOutputTokens) !== agent.max_output_tokens ||
       JSON.stringify(variables) !== JSON.stringify(agent.variables) ||
       outputSchemaText.trim() !== (agent.output_schema ? JSON.stringify(agent.output_schema, null, 2) : "")
     : true;
@@ -52,6 +54,7 @@ export function useAgentForm(agent?: Agent) {
       model,
       temperature,
       timeout_seconds: Math.round(timeoutSeconds),
+      max_output_tokens: Math.round(maxOutputTokens),
       variables,
       writes: writes || null,
       output_schema: parsedOutputSchema,
@@ -73,6 +76,8 @@ export function useAgentForm(agent?: Agent) {
     setTemperature,
     timeoutSeconds,
     setTimeoutSeconds,
+    maxOutputTokens,
+    setMaxOutputTokens,
     outputSchemaText,
     setOutputSchemaText,
     outputSchemaError,
