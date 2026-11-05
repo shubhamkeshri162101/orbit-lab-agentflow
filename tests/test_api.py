@@ -336,11 +336,23 @@ def test_delete_blocked_while_public(client):
     assert client.patch(f"/models/{model['id']}/visibility", json={"visibility": "personal"}).status_code == 200
     assert client.delete(f"/models/{model['id']}").status_code == 200
 
-    server = client.post("/mcp-servers", json={"name": "public-server", "command": "echo"}).json()
-    client.patch(f"/mcp-servers/{server['id']}/visibility", json={"visibility": "public"})
-    assert client.delete(f"/mcp-servers/{server['id']}").status_code == 409
-    assert client.patch(f"/mcp-servers/{server['id']}/visibility", json={"visibility": "personal"}).status_code == 200
+    # MCP servers are personal-only (see test_mcp_server_cannot_be_made_public)
+    # so there's no public state to block deletion -- it just succeeds.
+    server = client.post("/mcp-servers", json={"name": "deletable-server", "command": "echo"}).json()
     assert client.delete(f"/mcp-servers/{server['id']}").status_code == 200
+
+
+def test_mcp_server_cannot_be_made_public(client):
+    """MCP servers can run local commands and carry credentials via
+    env_passthrough, so unlike other resources they're never publishable."""
+    server = client.post("/mcp-servers", json={"name": "secret-server", "command": "echo"}).json()
+    assert server["visibility"] == "personal"
+
+    response = client.patch(f"/mcp-servers/{server['id']}/visibility", json={"visibility": "public"})
+    assert response.status_code == 400
+
+    refreshed = client.get("/mcp-servers").json()
+    assert next(s for s in refreshed if s["id"] == server["id"])["visibility"] == "personal"
 
 
 def test_create_tool_and_run_it(client):

@@ -433,7 +433,7 @@ def run_single_tool(tool_id: str, request: RunRequest) -> dict:
 def create_mcp_server(server: McpServerCreate, user: str = Depends(current_user)) -> dict:
     data = server.model_dump()
     data["owner"] = user
-    data["visibility"] = "personal"  # new resources always start personal — publish explicitly
+    data["visibility"] = "personal"  # MCP servers are personal-only — see set_mcp_server_visibility
     return mcp_servers_repo.put(data)
 
 
@@ -444,6 +444,12 @@ def list_mcp_servers(user: str = Depends(current_user)) -> list[dict]:
 
 @app.patch("/mcp-servers/{server_id}/visibility")
 def set_mcp_server_visibility(server_id: str, body: VisibilityUpdate) -> dict:
+    """MCP servers can carry credentials via env_passthrough (e.g. a Slack
+    bot token's env var name) and `command`/`args` that run arbitrary local
+    processes -- unlike other resources, they're never publishable, so every
+    user connects (and is responsible for) their own."""
+    if body.visibility == "public":
+        raise HTTPException(400, "MCP servers are personal-only and can't be made public")
     existing = mcp_servers_repo.get(server_id)
     if existing is None:
         raise HTTPException(404, "mcp server not found")
